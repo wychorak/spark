@@ -1,0 +1,52 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:spark/core/constants/app_colors.dart';
+import 'package:spark/shared/widgets/spark_bottom_nav.dart';
+import 'package:spark/features/discovery/presentation/screens/discovery_screen.dart';
+import 'package:spark/features/matching/presentation/screens/matches_list_screen.dart';
+import 'package:spark/features/profile/presentation/screens/profile_screen.dart';
+
+/// Provider tracking the current tab index for the home shell.
+final homeTabProvider = StateProvider<int>((ref) => 0);
+
+class HomeScreen extends ConsumerWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentTab = ref.watch(homeTabProvider);
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: IndexedStack(
+        index: currentTab,
+        children: const [
+          DiscoveryScreen(),
+          MatchesListScreen(),
+          _ChatsPlaceholder(),
+          ProfileScreen(),
+        ],
+      ),
+      bottomNavigationBar: const SparkBottomNav(),
+    );
+  }
+}
+
+/// Placeholder for the chats list tab until a dedicated screen is built.
+class _ChatsPlaceholder extends StatelessWidget {
+  const _ChatsPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text(
+        'Czat',
+        style: TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 18,
+        ),
+      ),
+    );
+  }
+}
