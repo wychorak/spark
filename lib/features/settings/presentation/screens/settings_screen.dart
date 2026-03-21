@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,7 +9,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
-import 'package:spark/core/theme/app_theme.dart';
 import 'package:spark/core/router/app_router.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
 

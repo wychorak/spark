@@ -29,11 +29,11 @@ Future<void> main() async {
   await Supabase.initialize(
     url: const String.fromEnvironment(
       'SUPABASE_URL',
-      defaultValue: 'https://YOUR_PROJECT.supabase.co',
+      defaultValue: 'https://fildemavidnskmhcyqin.supabase.co',
     ),
     anonKey: const String.fromEnvironment(
       'SUPABASE_ANON_KEY',
-      defaultValue: 'YOUR_ANON_KEY',
+      defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGRlbWF2aWRuc2ttaGN5cWluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjA4NDIsImV4cCI6MjA4OTY5Njg0Mn0.RMvXg1oy3ZC2z4KJb6BI0OcxBaS6yhk5jdnQWTp8yRk',
     ),
   );
 

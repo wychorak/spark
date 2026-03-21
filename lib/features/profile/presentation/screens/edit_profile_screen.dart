@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -542,7 +543,7 @@ class _InterestsGrid extends ConsumerWidget {
 
         return GestureDetector(
           onTap: () {
-            final current = {...selected};
+            final current = <String>{...selected};
             if (isSelected) {
               current.remove(interest);
             } else {
@@ -599,7 +600,7 @@ class _ModeSelection extends ConsumerWidget {
         return Expanded(
           child: GestureDetector(
             onTap: () {
-              final current = {...selectedModes};
+              final current = <String>{...selectedModes};
               if (isSelected) {
                 current.remove(mode.id);
               } else {

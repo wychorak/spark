@@ -1,48 +1,42 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_provider.dart';
 
-part 'auth_provider.g.dart';
-
-/// Stream of auth state changes (sign in, sign out, token refresh, etc.)
-@riverpod
-Stream<AuthState> authStateChanges(Ref ref) {
+/// Stream of auth state changes
+final authStateChangesProvider = StreamProvider<AuthState>((ref) {
   final auth = ref.watch(supabaseAuthProvider);
   return auth.onAuthStateChange;
-}
+});
 
-/// Current auth session (nullable). Emits on every auth change.
-@riverpod
-Stream<Session?> authState(Ref ref) {
+/// Current session stream
+final authSessionProvider = StreamProvider<Session?>((ref) {
   final auth = ref.watch(supabaseAuthProvider);
-  // Seed with current session, then follow the stream
   return auth.onAuthStateChange.map((event) => event.session);
-}
+});
 
-/// Current user (nullable), derived from session.
-@riverpod
-User? currentUser(Ref ref) {
+/// Current user (nullable)
+final currentUserProvider = Provider<User?>((ref) {
   final auth = ref.watch(supabaseAuthProvider);
   return auth.currentUser;
-}
+});
 
-/// Whether the user is currently logged in.
-@riverpod
-bool isLoggedIn(Ref ref) {
+/// Whether the user is logged in
+final isLoggedInProvider = Provider<bool>((ref) {
   return ref.watch(currentUserProvider) != null;
-}
+});
 
-/// Auth actions notifier – sign in, sign up, sign out, reset password.
-@riverpod
-class AuthActions extends _$AuthActions {
-  @override
-  FutureOr<void> build() {}
+/// Auth actions notifier
+final authActionsProvider =
+    StateNotifierProvider<AuthActionsNotifier, AsyncValue<void>>((ref) {
+  return AuthActionsNotifier(ref.watch(supabaseAuthProvider));
+});
 
-  GoTrueClient get _auth => ref.read(supabaseAuthProvider);
+class AuthActionsNotifier extends StateNotifier<AsyncValue<void>> {
+  final GoTrueClient _auth;
+
+  AuthActionsNotifier(this._auth) : super(const AsyncData(null));
 
   Future<void> signInWithEmail({
     required String email,

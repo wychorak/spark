@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/shared/widgets/spark_bottom_nav.dart';

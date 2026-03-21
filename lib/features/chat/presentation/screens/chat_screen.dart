@@ -326,6 +326,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 child: CachedNetworkImage(
                   imageUrl: widget.matchPhotoUrl,
                   fit: BoxFit.cover,
+                  placeholder: (_, __) => CircleAvatar(
+                    backgroundColor: modeColor,
+                    child: Text(
+                      widget.matchName.isNotEmpty
+                          ? widget.matchName[0].toUpperCase()
+                          : '?',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, __, ___) => CircleAvatar(
+                    backgroundColor: AppColors.primary,
+                    child: Text(
+                      widget.matchName.isNotEmpty
+                          ? widget.matchName[0].toUpperCase()
+                          : '?',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

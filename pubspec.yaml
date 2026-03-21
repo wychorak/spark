@@ -61,6 +61,8 @@ dependencies:
   flutter_svg: ^2.2.4
   smooth_page_indicator: ^2.0.1
   flutter_staggered_animations: ^1.1.1
+  purchases_flutter: ^9.15.0
+  purchases_ui_flutter: ^9.15.0
 
 dev_dependencies:
   flutter_test:

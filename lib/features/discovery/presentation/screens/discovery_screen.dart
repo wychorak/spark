@@ -597,7 +597,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
         child: Transform(
           alignment: Alignment.center,
           transform: Matrix4.identity()
-            ..translateByDouble(_dragX, _dragY)
+            ..translate(_dragX, _dragY)
             ..rotateZ(angle),
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
@@ -631,7 +631,16 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
                       ),
                     ),
                     errorWidget: (_, __, ___) => Container(
-                      color: AppColors.surfaceLight,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            modeColor.withValues(alpha: 0.3),
+                            AppColors.surfaceLight,
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
                       child: const Icon(Icons.person,
                           size: 80, color: AppColors.textHint),
                     ),

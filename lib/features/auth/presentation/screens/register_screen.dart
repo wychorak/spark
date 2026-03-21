@@ -145,7 +145,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     }
                     return null;
                   },
-                ).animate().fadeIn(delay: 100.ms, duration: 500.ms),
+                ),
 
                 const Gap(AppDimensions.spacing16),
 
@@ -177,7 +177,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     }
                     return null;
                   },
-                ).animate().fadeIn(delay: 200.ms, duration: 500.ms),
+                ),
 
                 const Gap(AppDimensions.spacing12),
 
@@ -224,7 +224,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     }
                     return null;
                   },
-                ).animate().fadeIn(delay: 300.ms, duration: 500.ms),
+                ),
 
                 const Gap(AppDimensions.spacing24),
 

@@ -170,7 +170,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     }
                     return null;
                   },
-                ).animate().fadeIn(delay: 200.ms, duration: 500.ms),
+                ),
 
                 const Gap(AppDimensions.spacing16),
 
@@ -200,7 +200,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     }
                     return null;
                   },
-                ).animate().fadeIn(delay: 300.ms, duration: 500.ms),
+                ),
 
                 const Gap(AppDimensions.spacing12),
 
