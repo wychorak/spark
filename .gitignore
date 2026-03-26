@@ -1,0 +1,6 @@
+.claude/
+spark/build/
+spark/.dart_tool/
+spark/.flutter-plugins
+spark/.flutter-plugins-dependencies
+*.log
