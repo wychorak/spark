@@ -74,6 +74,7 @@ class ProfileScreen extends ConsumerWidget {
                 _SpotifySection(
                   trackName: profile?.spotifyTrackName,
                   artist: profile?.spotifyArtist,
+                  previewUrl: profile?.spotifyPreviewUrl,
                 ),
                 const Gap(AppDimensions.spacing32),
                 const _ActionButtons(),
@@ -463,9 +464,10 @@ class _StatCard extends StatelessWidget {
 // ── Spotify Section ──
 
 class _SpotifySection extends ConsumerWidget {
-  const _SpotifySection({this.trackName, this.artist});
+  const _SpotifySection({this.trackName, this.artist, this.previewUrl});
   final String? trackName;
   final String? artist;
+  final String? previewUrl;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -499,7 +501,7 @@ class _SpotifySection extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Moj hymn',
+                  'Mój hymn',
                   style: GoogleFonts.outfit(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -520,14 +522,36 @@ class _SpotifySection extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (artist != null) ...[
+                  const Gap(AppDimensions.spacing2),
+                  Text(
+                    artist!,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),
           const Gap(AppDimensions.spacing8),
           // ── Play button ──
           GestureDetector(
-            onTap: () {
-              ref.read(_isPlayingProvider.notifier).state = !isPlaying;
+            onTap: () async {
+              final player = ref.read(_audioPlayerProvider);
+              if (isPlaying) {
+                await player.pause();
+                ref.read(_isPlayingProvider.notifier).state = false;
+              } else if (previewUrl != null && previewUrl!.isNotEmpty) {
+                try {
+                  await player.setUrl(previewUrl!);
+                  await player.play();
+                  ref.read(_isPlayingProvider.notifier).state = true;
+                } catch (_) {}
+              }
             },
             child: Container(
               width: 40,
@@ -575,7 +599,7 @@ class _ActionButtons extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: NeonOutlinedButton(
-            label: 'Podglad profilu',
+            label: 'Podgląd profilu',
             icon: Icons.visibility_outlined,
             onPressed: () {
               // Navigate to profile preview showing what others see

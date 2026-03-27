@@ -16,6 +16,7 @@ class UserProfile {
   final List<String> interests;
   final String? spotifyTrackName;
   final String? spotifyArtist;
+  final String? spotifyPreviewUrl;
 
   const UserProfile({
     required this.id,
@@ -30,12 +31,13 @@ class UserProfile {
     this.interests = const [],
     this.spotifyTrackName,
     this.spotifyArtist,
+    this.spotifyPreviewUrl,
   });
 }
 
 /// Fetches profile for a given userId. Keyed by userId so it only re-fetches
 /// when the user actually changes, not on every auth stream tick.
-final _profileByIdProvider =
+final profileByIdProvider =
     FutureProvider.family<UserProfile?, String>((ref, userId) async {
   final client = ref.watch(supabaseClientProvider);
 
@@ -116,7 +118,8 @@ final _profileByIdProvider =
     photoUrls: photoUrls,
     interests: interests,
     spotifyTrackName: profileRes['spotify_track_name']?.toString(),
-    spotifyArtist: profileRes['spotify_artist']?.toString(),
+    spotifyArtist: profileRes['spotify_artist_name']?.toString(),
+    spotifyPreviewUrl: profileRes['spotify_preview_url']?.toString(),
   );
 });
 
@@ -124,5 +127,5 @@ final _profileByIdProvider =
 final currentProfileProvider = Provider<AsyncValue<UserProfile?>>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) return const AsyncData(null);
-  return ref.watch(_profileByIdProvider(user.id));
+  return ref.watch(profileByIdProvider(user.id));
 });

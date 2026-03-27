@@ -1,173 +1,16 @@
-import 'dart:async';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
-import 'package:spark/core/theme/app_theme.dart';
-import 'package:spark/shared/widgets/neon_text_field.dart';
-
-// ─── Mock Data ──────────────────────────────────────────────
-
-class ChatMessage {
-  final String id;
-  final String senderId;
-  final String text;
-  final DateTime createdAt;
-  final bool isRead;
-
-  const ChatMessage({
-    required this.id,
-    required this.senderId,
-    required this.text,
-    required this.createdAt,
-    this.isRead = false,
-  });
-}
-
-const String _myUserId = 'me';
-const String _otherUserId = 'other';
-
-final List<ChatMessage> _mockMessages = [
-  ChatMessage(
-    id: '1',
-    senderId: _otherUserId,
-    text: 'Hej! Widzę, że też lubisz podróże 🌍',
-    createdAt: DateTime.now().subtract(const Duration(hours: 2, minutes: 30)),
-  ),
-  ChatMessage(
-    id: '2',
-    senderId: _myUserId,
-    text: 'Cześć! Tak, uwielbiam! Gdzie ostatnio byłaś?',
-    createdAt: DateTime.now().subtract(const Duration(hours: 2, minutes: 28)),
-  ),
-  ChatMessage(
-    id: '3',
-    senderId: _otherUserId,
-    text: 'W Lizbonie! Było niesamowicie, muszę Ci opowiedzieć',
-    createdAt: DateTime.now().subtract(const Duration(hours: 2, minutes: 25)),
-  ),
-  ChatMessage(
-    id: '4',
-    senderId: _myUserId,
-    text: 'O, Lizbona jest na mojej liście! Poleciłabyś jakieś miejsca?',
-    createdAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
-  ),
-  ChatMessage(
-    id: '5',
-    senderId: _otherUserId,
-    text: 'Zdecydowanie dzielnica Alfama i pastel de nata w Belém 🥐',
-    createdAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 45)),
-  ),
-  ChatMessage(
-    id: '6',
-    senderId: _otherUserId,
-    text: 'A Ty? Jakie masz plany podróżnicze?',
-    createdAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 44)),
-  ),
-  ChatMessage(
-    id: '7',
-    senderId: _myUserId,
-    text: 'Myślę o Japonii na wiosnę! 🌸 Czas na kwitnące wiśnie',
-    createdAt: DateTime.now().subtract(const Duration(minutes: 30)),
-  ),
-  ChatMessage(
-    id: '8',
-    senderId: _otherUserId,
-    text: 'Marzenie! Może kiedyś razem? 😊',
-    createdAt: DateTime.now().subtract(const Duration(minutes: 5)),
-    isRead: false,
-  ),
-];
-
-// ─── State ──────────────────────────────────────────────────
-
-class ChatState {
-  final List<ChatMessage> messages;
-  final bool isTyping;
-  final bool isLoading;
-
-  const ChatState({
-    this.messages = const [],
-    this.isTyping = false,
-    this.isLoading = false,
-  });
-
-  ChatState copyWith({
-    List<ChatMessage>? messages,
-    bool? isTyping,
-    bool? isLoading,
-  }) {
-    return ChatState(
-      messages: messages ?? this.messages,
-      isTyping: isTyping ?? this.isTyping,
-      isLoading: isLoading ?? this.isLoading,
-    );
-  }
-}
-
-class ChatNotifier extends Notifier<ChatState> {
-  Timer? _typingTimer;
-
-  @override
-  ChatState build() {
-    return ChatState(messages: _mockMessages);
-  }
-
-  void sendMessage(String text) {
-    if (text.trim().isEmpty) return;
-    final msg = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      senderId: _myUserId,
-      text: text.trim(),
-      createdAt: DateTime.now(),
-    );
-    state = state.copyWith(messages: [...state.messages, msg]);
-
-    // Simulate typing response
-    state = state.copyWith(isTyping: true);
-    _typingTimer?.cancel();
-    _typingTimer = Timer(const Duration(seconds: 2), () {
-      final reply = ChatMessage(
-        id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
-        senderId: _otherUserId,
-        text: _getAutoReply(),
-        createdAt: DateTime.now(),
-      );
-      state = state.copyWith(
-        messages: [...state.messages, reply],
-        isTyping: false,
-      );
-    });
-  }
-
-  String _getAutoReply() {
-    final replies = [
-      'Super!',
-      'Zgadzam sie!',
-      'Opowiedz mi wiecej!',
-      'To brzmi swietnie!',
-      'Musze to sprawdzic!',
-      'Haha, dokladnie tak!',
-    ];
-    return replies[state.messages.length % replies.length];
-  }
-
-  void markAsRead() {
-    // In production: update via Supabase
-  }
-}
-
-final chatProvider =
-    NotifierProvider<ChatNotifier, ChatState>(
-  ChatNotifier.new,
-);
+import 'package:spark/shared/providers/auth_provider.dart';
+import 'package:spark/shared/providers/match_chat_provider.dart';
 
 // ─── Chat Screen ────────────────────────────────────────────
 
@@ -179,10 +22,9 @@ class ChatScreen extends ConsumerStatefulWidget {
 
   const ChatScreen({
     super.key,
-    this.matchId = 'c1',
-    this.matchName = 'Kasia',
-    this.matchPhotoUrl =
-        'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=200',
+    required this.matchId,
+    this.matchName = '',
+    this.matchPhotoUrl = '',
     this.matchMode = 'relationship',
   });
 
@@ -193,13 +35,15 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  int _previousMessageCount = 0;
+
+  String get _conversationId => widget.matchId;
 
   @override
   void initState() {
     super.initState();
-    // Mark messages as read
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(chatProvider.notifier).markAsRead();
+      ref.read(markMessagesReadProvider)(_conversationId);
     });
   }
 
@@ -213,7 +57,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _sendMessage() {
     final text = _textController.text;
     if (text.trim().isEmpty) return;
-    ref.read(chatProvider.notifier).sendMessage(text);
+    ref.read(sendMessageProvider)(_conversationId, text.trim());
     _textController.clear();
     _scrollToBottom();
   }
@@ -259,14 +103,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       const Icon(Icons.flag_rounded, color: AppColors.warning),
                   title: Text(AppStrings.matchesReport,
                       style: GoogleFonts.outfit(color: AppColors.warning)),
-                  onTap: () => Navigator.pop(ctx),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showReportDialog();
+                  },
                 ),
                 ListTile(
                   leading:
                       const Icon(Icons.block_rounded, color: AppColors.error),
                   title: Text('Zablokuj',
                       style: GoogleFonts.outfit(color: AppColors.error)),
-                  onTap: () => Navigator.pop(ctx),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showBlockConfirmation();
+                  },
                 ),
                 ListTile(
                   leading: const Icon(Icons.heart_broken_rounded,
@@ -274,7 +124,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   title: Text(AppStrings.matchesUnmatch,
                       style: GoogleFonts.outfit(
                           color: AppColors.textSecondary)),
-                  onTap: () => Navigator.pop(ctx),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showUnmatchConfirmation();
+                  },
                 ),
                 const Gap(8),
                 TextButton(
@@ -291,18 +144,153 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  void _showBlockConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(
+          'Zablokuj',
+          style: GoogleFonts.outfit(
+            color: AppColors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Czy na pewno chcesz zablokować tego użytkownika?',
+          style: GoogleFonts.outfit(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel,
+                style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(blockUserProvider)(_conversationId);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Użytkownik został zablokowany',
+                        style: GoogleFonts.outfit()),
+                    backgroundColor: AppColors.surface,
+                  ),
+                );
+                context.pop();
+              }
+            },
+            child: Text('Zablokuj',
+                style: GoogleFonts.outfit(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReportDialog() {
+    final reasons = <String, String>{
+      'spam': 'Spam',
+      'harassment': 'Nękanie',
+      'fake_profile': 'Fałszywy profil',
+      'inappropriate': 'Nieodpowiednie treści',
+      'other': 'Inne',
+    };
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(
+          'Zgłoś użytkownika',
+          style: GoogleFonts.outfit(
+            color: AppColors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: reasons.entries.map((entry) {
+            return ListTile(
+              title: Text(entry.value,
+                  style: GoogleFonts.outfit(color: AppColors.textPrimary)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await ref.read(reportUserProvider)(
+                  _conversationId,
+                  entry.key,
+                  null,
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Dziękujemy za zgłoszenie',
+                          style: GoogleFonts.outfit()),
+                      backgroundColor: AppColors.surface,
+                    ),
+                  );
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel,
+                style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUnmatchConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(
+          AppStrings.matchesUnmatch,
+          style: GoogleFonts.outfit(
+            color: AppColors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Czy na pewno chcesz usunąć tę parę?',
+          style: GoogleFonts.outfit(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel,
+                style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(unmatchProvider)(_conversationId);
+              if (mounted) {
+                context.pop();
+              }
+            },
+            child: Text(AppStrings.matchesUnmatch,
+                style: GoogleFonts.outfit(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final chatState = ref.watch(chatProvider);
+    final currentUser = ref.watch(currentUserProvider);
+    final messagesAsync = ref.watch(chatMessagesProvider(_conversationId));
     final modeColor = AppColors.colorForMode(widget.matchMode);
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-
-    // Auto-scroll when new messages arrive
-    ref.listen<ChatState>(chatProvider, (prev, next) {
-      if (prev != null && next.messages.length > prev.messages.length) {
-        _scrollToBottom();
-      }
-    });
+    final currentUserId = currentUser?.id ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -310,7 +298,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         backgroundColor: AppColors.surface,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: AppColors.white),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.pop(),
         ),
         titleSpacing: 0,
         title: Row(
@@ -387,14 +375,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ],
                 ),
                 Text(
-                  chatState.isTyping
-                      ? AppStrings.chatTyping
-                      : AppStrings.chatOnline,
+                  AppStrings.chatOnline,
                   style: GoogleFonts.outfit(
                     fontSize: 12,
-                    color: chatState.isTyping
-                        ? modeColor
-                        : AppColors.textSecondary,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -411,40 +395,61 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Column(
         children: [
-          // Messages
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.screenPadding,
-                vertical: 12,
+            child: messagesAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
               ),
-              itemCount: chatState.messages.length +
-                  (chatState.isTyping ? 1 : 0),
-              itemBuilder: (context, i) {
-                // Typing indicator
-                if (i == chatState.messages.length && chatState.isTyping) {
-                  return _TypingIndicator();
+              error: (err, _) => Center(
+                child: Text(
+                  AppStrings.errorGeneral,
+                  style: GoogleFonts.outfit(color: AppColors.textSecondary),
+                ),
+              ),
+              data: (messages) {
+                if (messages.length != _previousMessageCount) {
+                  _previousMessageCount = messages.length;
+                  _scrollToBottom();
                 }
 
-                final msg = chatState.messages[i];
-                final isMe = msg.senderId == _myUserId;
-
-                // Group timestamps
-                final showTimestamp = i == 0 ||
-                    msg.createdAt
-                            .difference(chatState.messages[i - 1].createdAt)
-                            .inMinutes >
-                        15;
-
-                return Column(
-                  children: [
-                    if (showTimestamp) _TimestampLabel(time: msg.createdAt),
-                    _MessageBubble(
-                      message: msg,
-                      isMe: isMe,
+                if (messages.isEmpty) {
+                  return Center(
+                    child: Text(
+                      AppStrings.chatEmpty,
+                      style:
+                          GoogleFonts.outfit(color: AppColors.textSecondary),
                     ),
-                  ],
+                  );
+                }
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.screenPadding,
+                    vertical: 12,
+                  ),
+                  itemCount: messages.length,
+                  itemBuilder: (context, i) {
+                    final msg = messages[i];
+                    final isMe = msg.senderId == currentUserId;
+
+                    final showTimestamp = i == 0 ||
+                        msg.createdAt
+                                .difference(messages[i - 1].createdAt)
+                                .inMinutes >
+                            15;
+
+                    return Column(
+                      children: [
+                        if (showTimestamp)
+                          _TimestampLabel(time: msg.createdAt),
+                        _MessageBubble(
+                          content: msg.content,
+                          isMe: isMe,
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -528,10 +533,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 // ─── Message Bubble ─────────────────────────────────────────
 
 class _MessageBubble extends StatelessWidget {
-  final ChatMessage message;
+  final String content;
   final bool isMe;
 
-  const _MessageBubble({required this.message, required this.isMe});
+  const _MessageBubble({required this.content, required this.isMe});
 
   @override
   Widget build(BuildContext context) {
@@ -564,7 +569,7 @@ class _MessageBubble extends StatelessWidget {
                 : null,
           ),
           child: Text(
-            message.text,
+            content,
             style: GoogleFonts.outfit(
               fontSize: 14,
               color: AppColors.white,
@@ -601,59 +606,5 @@ class _TimestampLabel extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ─── Typing Indicator ───────────────────────────────────────
-
-class _TypingIndicator extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomRight: Radius.circular(18),
-            bottomLeft: Radius.circular(4),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (i) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppColors.textHint,
-                  shape: BoxShape.circle,
-                ),
-              )
-                  .animate(
-                    onPlay: (c) => c.repeat(),
-                  )
-                  .scale(
-                    begin: const Offset(1, 1),
-                    end: const Offset(1.4, 1.4),
-                    duration: 600.ms,
-                    delay: (i * 150).ms,
-                  )
-                  .then()
-                  .scale(
-                    begin: const Offset(1.4, 1.4),
-                    end: const Offset(1, 1),
-                    duration: 600.ms,
-                  ),
-            );
-          }),
-        ),
-      ),
-    ).animate().fadeIn(duration: 300.ms);
   }
 }

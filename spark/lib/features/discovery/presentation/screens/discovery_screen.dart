@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,16 +8,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/theme/app_theme.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
+import 'package:spark/features/matching/presentation/screens/match_screen.dart';
 
-// ─── Mock Data ───────────────────────────────────────────────
+// ─── Discovery Profile (replaces MockProfile) ───────────────
 
-class MockProfile {
+class DiscoveryProfile {
   final String id;
   final String name;
   final int age;
@@ -29,8 +32,11 @@ class MockProfile {
   final String? spotifyTrackName;
   final String? spotifyArtist;
   final String? spotifyPreviewUrl;
+  final String? city;
+  final String? gender;
+  final double? score;
 
-  const MockProfile({
+  const DiscoveryProfile({
     required this.id,
     required this.name,
     required this.age,
@@ -43,11 +49,16 @@ class MockProfile {
     this.spotifyTrackName,
     this.spotifyArtist,
     this.spotifyPreviewUrl,
+    this.city,
+    this.gender,
+    this.score,
   });
 }
 
-final List<MockProfile> _mockProfiles = [
-  const MockProfile(
+// ─── Mock Data (fallback) ───────────────────────────────────
+
+final List<DiscoveryProfile> _mockProfiles = [
+  const DiscoveryProfile(
     id: '1',
     name: 'Kasia',
     age: 24,
@@ -64,7 +75,7 @@ final List<MockProfile> _mockProfiles = [
     spotifyTrackName: 'Blinding Lights',
     spotifyArtist: 'The Weeknd',
   ),
-  const MockProfile(
+  const DiscoveryProfile(
     id: '2',
     name: 'Maja',
     age: 22,
@@ -80,7 +91,7 @@ final List<MockProfile> _mockProfiles = [
     spotifyTrackName: 'Levitating',
     spotifyArtist: 'Dua Lipa',
   ),
-  const MockProfile(
+  const DiscoveryProfile(
     id: '3',
     name: 'Ola',
     age: 27,
@@ -97,7 +108,7 @@ final List<MockProfile> _mockProfiles = [
     spotifyTrackName: 'After Hours',
     spotifyArtist: 'The Weeknd',
   ),
-  const MockProfile(
+  const DiscoveryProfile(
     id: '4',
     name: 'Zuza',
     age: 25,
@@ -113,7 +124,7 @@ final List<MockProfile> _mockProfiles = [
     spotifyTrackName: 'As It Was',
     spotifyArtist: 'Harry Styles',
   ),
-  const MockProfile(
+  const DiscoveryProfile(
     id: '5',
     name: 'Ania',
     age: 23,
@@ -130,14 +141,19 @@ final List<MockProfile> _mockProfiles = [
 
 // ─── Providers ───────────────────────────────────────────────
 
+const _supabaseStorageBase =
+    'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/photos/';
+
 class DiscoveryState {
-  final List<MockProfile> profiles;
+  final List<DiscoveryProfile> profiles;
   final int currentIndex;
-  final List<MockProfile> passedProfiles;
+  final List<DiscoveryProfile> passedProfiles;
   final double distanceFilter;
   final RangeValues ageFilter;
   final Set<String> modeFilters;
   final Set<String> genderFilters;
+  final bool isLoading;
+  final String? error;
 
   const DiscoveryState({
     this.profiles = const [],
@@ -147,16 +163,20 @@ class DiscoveryState {
     this.ageFilter = const RangeValues(18, 65),
     this.modeFilters = const {'relationship', 'friends', 'fwb'},
     this.genderFilters = const {'female', 'male', 'nonbinary'},
+    this.isLoading = false,
+    this.error,
   });
 
   DiscoveryState copyWith({
-    List<MockProfile>? profiles,
+    List<DiscoveryProfile>? profiles,
     int? currentIndex,
-    List<MockProfile>? passedProfiles,
+    List<DiscoveryProfile>? passedProfiles,
     double? distanceFilter,
     RangeValues? ageFilter,
     Set<String>? modeFilters,
     Set<String>? genderFilters,
+    bool? isLoading,
+    String? error,
   }) {
     return DiscoveryState(
       profiles: profiles ?? this.profiles,
@@ -166,34 +186,258 @@ class DiscoveryState {
       ageFilter: ageFilter ?? this.ageFilter,
       modeFilters: modeFilters ?? this.modeFilters,
       genderFilters: genderFilters ?? this.genderFilters,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
     );
   }
 
   bool get hasProfiles => currentIndex < profiles.length;
-  MockProfile? get currentProfile =>
+  DiscoveryProfile? get currentProfile =>
       hasProfiles ? profiles[currentIndex] : null;
 }
 
 class DiscoveryNotifier extends Notifier<DiscoveryState> {
+  SupabaseClient get _supabase => Supabase.instance.client;
+
   @override
-  DiscoveryState build() => DiscoveryState(profiles: _mockProfiles);
+  DiscoveryState build() {
+    // Use Future.microtask to ensure state is settable after build
+    Future.microtask(() => _loadProfiles());
+    return const DiscoveryState(isLoading: true);
+  }
+
+  Future<void> _loadProfiles() async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+    } catch (_) {}
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+        return;
+      }
+
+      // Fetch blocked user IDs
+      final Set<String> blockedIds = {};
+      try {
+        final blocksRes = await _supabase
+            .from('blocks')
+            .select('blocked_id')
+            .eq('blocker_id', userId);
+        for (final b in blocksRes) {
+          blockedIds.add(b['blocked_id'] as String);
+        }
+        final blockedByRes = await _supabase
+            .from('blocks')
+            .select('blocker_id')
+            .eq('blocked_id', userId);
+        for (final b in blockedByRes) {
+          blockedIds.add(b['blocker_id'] as String);
+        }
+      } catch (_) {}
+
+      // Fetch already-swiped user IDs
+      final Set<String> swipedIds = {};
+      try {
+        final swipesRes = await _supabase
+            .from('swipe_actions')
+            .select('target_id')
+            .eq('user_id', userId);
+        for (final s in swipesRes) {
+          swipedIds.add(s['target_id'] as String);
+        }
+      } catch (_) {}
+
+      final response = await _supabase
+          .from('user_profiles')
+          .select('*')
+          .neq('id', userId)
+          .eq('is_active', true)
+          .limit(50)
+          .timeout(const Duration(seconds: 10));
+
+      final List<dynamic> data = response as List<dynamic>;
+
+      if (data.isEmpty) {
+        state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+        return;
+      }
+
+      final profiles = <DiscoveryProfile>[];
+      for (final row in data) {
+        final profileId = row['id']?.toString() ?? '';
+
+        // Skip blocked and already-swiped users
+        if (blockedIds.contains(profileId) || swipedIds.contains(profileId)) continue;
+
+        // Fetch photos
+        List<String> photoUrls = [];
+        try {
+          final photosRes = await _supabase
+              .from('user_photos')
+              .select('storage_path, position')
+              .eq('user_id', profileId)
+              .order('position', ascending: true);
+          photoUrls = (photosRes as List<dynamic>)
+              .map((p) => '$_supabaseStorageBase${p['storage_path']}')
+              .toList()
+              .cast<String>();
+        } catch (_) {}
+
+        // Fetch interests
+        List<String> interests = [];
+        try {
+          final intRes = await _supabase
+              .from('user_interests')
+              .select('interests(name)')
+              .eq('user_id', profileId);
+          interests = (intRes as List<dynamic>)
+              .map((i) {
+                final interest = i['interests'];
+                if (interest is Map) return interest['name']?.toString() ?? '';
+                return '';
+              })
+              .where((s) => s.isNotEmpty)
+              .toList();
+        } catch (_) {}
+
+        // Parse modes
+        final rawModes = row['modes'];
+        List<String> modesList = [];
+        if (rawModes is List) {
+          modesList = rawModes.map((e) => e.toString()).toList();
+        } else if (rawModes is String) {
+          final cleaned = rawModes.replaceAll('{', '').replaceAll('}', '');
+          modesList = cleaned.split(',').where((s) => s.isNotEmpty).toList();
+        }
+        final mode = modesList.isNotEmpty ? modesList.first : 'relationship';
+
+        // Calculate age
+        int age = 0;
+        final bornAt = row['born_at'];
+        if (bornAt != null) {
+          final born = DateTime.tryParse(bornAt.toString());
+          if (born != null) {
+            final now = DateTime.now();
+            age = now.year - born.year - (now.month < born.month || (now.month == born.month && now.day < born.day) ? 1 : 0);
+          }
+        }
+
+        // Filter by age and gender
+        if (age < state.ageFilter.start || age > state.ageFilter.end) continue;
+        final gender = row['gender']?.toString() ?? 'female';
+        if (!state.genderFilters.contains(gender)) continue;
+        if (!modesList.any((m) => state.modeFilters.contains(m))) continue;
+
+        profiles.add(DiscoveryProfile(
+          id: profileId,
+          name: row['display_name']?.toString() ?? '',
+          age: age,
+          distanceKm: (Random().nextDouble() * 10 + 0.5),
+          mode: mode,
+          photos: photoUrls.isNotEmpty
+              ? photoUrls
+              : ['https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600'],
+          bio: row['bio']?.toString() ?? '',
+          interests: interests,
+          verified: row['is_verified'] == true,
+          spotifyTrackName: row['spotify_track_name']?.toString(),
+          spotifyArtist: row['spotify_artist_name']?.toString(),
+          spotifyPreviewUrl: row['spotify_preview_url']?.toString(),
+          city: row['city']?.toString(),
+          gender: gender,
+          score: null,
+        ));
+      }
+
+      if (profiles.isEmpty) {
+        state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+        return;
+      }
+
+      state = state.copyWith(
+        profiles: profiles,
+        currentIndex: 0,
+        isLoading: false,
+      );
+    } catch (e) {
+      debugPrint('Discovery error: $e');
+      state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+    }
+  }
+
+  Future<void> refresh() async {
+    state = state.copyWith(currentIndex: 0, passedProfiles: []);
+    await _loadProfiles();
+  }
+
+  /// Returns true if a match was created (mutual like detected by DB trigger)
+  Future<bool> _recordSwipeAction(String action) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null || !state.hasProfiles) return false;
+
+      final targetId = state.currentProfile!.id;
+
+      await _supabase.from('swipe_actions').insert({
+        'user_id': userId,
+        'target_id': targetId,
+        'action': action,
+      });
+
+      try {
+        await _supabase.rpc('fn_increment_daily_limit', params: {
+          'p_user_id': userId,
+          'p_action': action,
+        });
+      } catch (_) {}
+
+      // Check if a match was created (DB trigger creates it on mutual like)
+      if (action == 'like' || action == 'super_like') {
+        final matchCheck = await _supabase
+            .from('matches')
+            .select('id')
+            .eq('is_active', true)
+            .or('and(user1_id.eq.$userId,user2_id.eq.$targetId),and(user1_id.eq.$targetId,user2_id.eq.$userId)')
+            .maybeSingle();
+        return matchCheck != null;
+      }
+    } catch (e) {
+      debugPrint('Swipe action error: $e');
+    }
+    return false;
+  }
+
+  DiscoveryProfile? _lastLikedProfile;
+  bool _hasNewMatch = false;
+
+  bool get hasNewMatch => _hasNewMatch;
+  DiscoveryProfile? get lastLikedProfile => _lastLikedProfile;
+  void clearNewMatch() => _hasNewMatch = false;
 
   void pass() {
     if (!state.hasProfiles) return;
     final passed = [...state.passedProfiles, state.currentProfile!];
+    _recordSwipeAction('pass');
     state = state.copyWith(
       currentIndex: state.currentIndex + 1,
       passedProfiles: passed,
     );
   }
 
-  void like() {
+  Future<void> like() async {
     if (!state.hasProfiles) return;
+    _lastLikedProfile = state.currentProfile;
+    final matched = await _recordSwipeAction('like');
+    _hasNewMatch = matched;
     state = state.copyWith(currentIndex: state.currentIndex + 1);
   }
 
-  void superLike() {
+  Future<void> superLike() async {
     if (!state.hasProfiles) return;
+    _lastLikedProfile = state.currentProfile;
+    final matched = await _recordSwipeAction('super_like');
+    _hasNewMatch = matched;
     state = state.copyWith(currentIndex: state.currentIndex + 1);
   }
 
@@ -309,21 +553,21 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
     }
   }
 
-  void _triggerSwipe(SwipeDirection direction) {
+  Future<void> _triggerSwipe(SwipeDirection direction) async {
     _swipeDirection = direction;
     final notifier = ref.read(discoveryProvider.notifier);
 
     switch (direction) {
       case SwipeDirection.right:
         _showParticleEffect(ParticleType.heart);
-        notifier.like();
+        await notifier.like();
         break;
       case SwipeDirection.left:
         notifier.pass();
         break;
       case SwipeDirection.up:
         _showParticleEffect(ParticleType.star);
-        notifier.superLike();
+        await notifier.superLike();
         break;
     }
 
@@ -331,6 +575,25 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
       _dragX = 0;
       _dragY = 0;
     });
+
+    // Show match screen if mutual like detected
+    if (notifier.hasNewMatch && notifier.lastLikedProfile != null && mounted) {
+      notifier.clearNewMatch();
+      final matched = notifier.lastLikedProfile!;
+      await Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: false,
+          pageBuilder: (_, __, ___) => MatchScreen(
+            matchPhotoUrl: matched.photos.isNotEmpty ? matched.photos.first : '',
+            matchName: matched.name,
+            onSendMessage: () {
+              Navigator.pop(context);
+            },
+            onContinueBrowsing: () => Navigator.pop(context),
+          ),
+        ),
+      );
+    }
   }
 
   void _showParticleEffect(ParticleType type) {
@@ -545,46 +808,50 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
           ),
         ],
       ),
-      body: state.hasProfiles
-          ? Stack(
-              children: [
-                // Current card
-                _buildSwipeCard(state.currentProfile!, size),
-
-                // Particle overlay
-                if (_showParticles)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: AnimatedBuilder(
-                        animation: _particleController,
-                        builder: (context, _) {
-                          return CustomPaint(
-                            painter: ParticlePainter(
-                              progress: _particleController.value,
-                              type: _particleType,
-                              center: Offset(
-                                  size.width / 2, size.height / 2 - 60),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-
-                // Bottom action bar
-                Positioned(
-                  bottom: 16,
-                  left: 0,
-                  right: 0,
-                  child: _buildActionBar(notifier),
-                ),
-              ],
+      body: state.isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
             )
-          : _buildEmptyState(),
+          : state.hasProfiles
+              ? Stack(
+                  children: [
+                    // Current card
+                    _buildSwipeCard(state.currentProfile!, size),
+
+                    // Particle overlay
+                    if (_showParticles)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: AnimatedBuilder(
+                            animation: _particleController,
+                            builder: (context, _) {
+                              return CustomPaint(
+                                painter: ParticlePainter(
+                                  progress: _particleController.value,
+                                  type: _particleType,
+                                  center: Offset(
+                                      size.width / 2, size.height / 2 - 60),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+
+                    // Bottom action bar
+                    Positioned(
+                      bottom: 24,
+                      left: 0,
+                      right: 0,
+                      child: _buildActionBar(notifier),
+                    ),
+                  ],
+                )
+              : _buildEmptyState(),
     );
   }
 
-  Widget _buildSwipeCard(MockProfile profile, Size size) {
+  Widget _buildSwipeCard(DiscoveryProfile profile, Size size) {
     final angle = _dragX / 800;
     final modeColor = AppColors.colorForMode(profile.mode);
 
@@ -600,7 +867,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
             ..translate(_dragX, _dragY)
             ..rotateZ(angle),
           child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 130),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(
                   AppDimensions.discoveryCardBorderRadius),
@@ -752,6 +1019,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
                             _SpotifyMiniPlayer(
                               trackName: profile.spotifyTrackName!,
                               artist: profile.spotifyArtist ?? '',
+                              spotifyPreviewUrl: profile.spotifyPreviewUrl,
                             ),
                         ],
                       ),
@@ -945,7 +1213,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
     ).animate().fadeIn(duration: 500.ms);
   }
 
-  void _openProfileDetail(MockProfile profile) {
+  void _openProfileDetail(DiscoveryProfile profile) {
     Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (_, __, ___) => _FullProfileView(profile: profile),
@@ -1023,10 +1291,12 @@ class _ActionButton extends StatelessWidget {
 class _SpotifyMiniPlayer extends StatefulWidget {
   final String trackName;
   final String artist;
+  final String? spotifyPreviewUrl;
 
   const _SpotifyMiniPlayer({
     required this.trackName,
     required this.artist,
+    this.spotifyPreviewUrl,
   });
 
   @override
@@ -1035,10 +1305,41 @@ class _SpotifyMiniPlayer extends StatefulWidget {
 
 class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
   bool _isPlaying = false;
+  late final AudioPlayer _audioPlayer;
 
-  void _togglePlay() {
-    setState(() => _isPlaying = !_isPlaying);
-    // In production: use just_audio AudioPlayer to play 30s preview
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer = AudioPlayer();
+    _audioPlayer.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        if (mounted) setState(() => _isPlaying = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+      setState(() => _isPlaying = false);
+    } else {
+      final url = widget.spotifyPreviewUrl;
+      if (url != null && url.isNotEmpty) {
+        try {
+          await _audioPlayer.setUrl(url);
+          await _audioPlayer.play();
+          setState(() => _isPlaying = true);
+        } catch (_) {
+          // Playback failed silently
+        }
+      }
+    }
   }
 
   @override
@@ -1098,7 +1399,7 @@ class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
 // ─── Full Profile View (expanded card) ──────────────────────
 
 class _FullProfileView extends StatefulWidget {
-  final MockProfile profile;
+  final DiscoveryProfile profile;
 
   const _FullProfileView({required this.profile});
 
@@ -1307,6 +1608,7 @@ class _FullProfileViewState extends State<_FullProfileView> {
                     _SpotifyMiniPlayer(
                       trackName: profile.spotifyTrackName!,
                       artist: profile.spotifyArtist ?? '',
+                      spotifyPreviewUrl: profile.spotifyPreviewUrl,
                     ),
                   const Gap(40),
                 ],

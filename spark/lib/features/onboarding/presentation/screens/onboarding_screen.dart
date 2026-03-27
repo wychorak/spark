@@ -17,7 +17,6 @@ import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/router/app_router.dart';
 import 'package:spark/core/theme/app_theme.dart';
-import 'package:spark/shared/providers/auth_provider.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
 import 'package:spark/shared/widgets/neon_text_field.dart';
 
@@ -257,14 +256,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
     try {
       final supabase = Supabase.instance.client;
-      // Use client directly — Riverpod provider may not have refreshed yet
-      final user = supabase.auth.currentUser;
+      // Try refreshing session if needed
+      User? user = supabase.auth.currentUser;
       if (user == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sesja wygasła. Zaloguj się ponownie.')),
-          );
-        }
+        try {
+          final refreshed = await supabase.auth.refreshSession();
+          user = refreshed.user;
+        } catch (_) {}
+      }
+
+      // If still null, navigate to home anyway — profile can be set up later
+      if (user == null) {
+        if (mounted) context.go(RoutePaths.home);
         return;
       }
 
@@ -295,7 +298,29 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         'p_city': null,
       });
 
-      // 3. Update location if granted
+      // 3. Save interests
+      if (_selectedInterests.isNotEmpty) {
+        try {
+          await supabase.rpc('fn_save_user_interests', params: {
+            'p_interest_names': _selectedInterests.toList(),
+          });
+        } catch (_) {}
+      }
+
+      // 4. Save photo metadata to user_photos table
+      for (int i = 0; i < _photos.length; i++) {
+        if (_photos[i] == null) continue;
+        try {
+          final path = 'profiles/${user.id}/photo_$i.jpg';
+          await supabase.rpc('fn_save_user_photo', params: {
+            'p_storage_path': path,
+            'p_position': i,
+            'p_is_primary': i == 0,
+          });
+        } catch (_) {}
+      }
+
+      // 5. Update location if granted
       if (_position != null) {
         try {
           await supabase.rpc('fn_update_user_location', params: {

@@ -60,7 +60,19 @@ class AuthActionsNotifier extends StateNotifier<AsyncValue<void>> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final res = await _auth.signUp(email: email, password: password);
-      // If no session (email confirmation required), sign in immediately
+
+      // Supabase returns a fake user with no session for already-registered emails
+      // (anti-enumeration). Detect this: identities list is empty.
+      if (res.user != null &&
+          (res.user!.identities == null || res.user!.identities!.isEmpty)) {
+        throw const AuthException(
+          'User already registered',
+          statusCode: '400',
+          code: 'user_already_exists',
+        );
+      }
+
+      // If no session but real new user, sign in immediately
       if (res.session == null && res.user != null) {
         await _auth.signInWithPassword(email: email, password: password);
       }

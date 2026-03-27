@@ -161,6 +161,12 @@ abstract final class AppStrings {
   static const String errorServer = 'Błąd serwera. Spróbuj ponownie później.';
   static const String errorPermission = 'Brak uprawnień do wykonania tej operacji.';
   static const String errorNotFound = 'Nie znaleziono.';
+  static const String errorInvalidCredentials = 'Nieprawidłowy e-mail lub hasło.';
+  static const String errorEmailTaken = 'Ten adres e-mail jest już zajęty.';
+  static const String errorTooManyRequests = 'Zbyt wiele prób. Spróbuj ponownie za chwilę.';
+  static const String errorEmailNotConfirmed = 'Potwierdź swój adres e-mail, aby się zalogować.';
+  static const String errorUserNotFound = 'Nie znaleziono konta z tym adresem e-mail.';
+  static const String errorWeakPassword = 'Hasło jest zbyt słabe. Użyj silniejszego hasła.';
 
   // ── Misc ──
   static const String loading = 'Ładowanie...';

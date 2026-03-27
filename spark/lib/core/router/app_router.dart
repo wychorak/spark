@@ -1,8 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../shared/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/auth/presentation/screens/age_gate_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -14,6 +12,7 @@ import '../../features/premium/presentation/screens/paywall_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../../features/safety/presentation/screens/photo_verification_screen.dart';
+import '../../features/profile/presentation/screens/profile_detail_screen.dart';
 
 // ─────────────── Route Paths ───────────────
 
@@ -109,7 +108,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: RouteNames.chatDetail,
         builder: (context, state) {
           final chatId = state.pathParameters['id'] ?? '';
-          return ChatScreen(matchId: chatId);
+          final name = state.uri.queryParameters['name'] ?? '';
+          final photo = state.uri.queryParameters['photo'] ?? '';
+          final mode = state.uri.queryParameters['mode'] ?? 'relationship';
+          return ChatScreen(
+            matchId: chatId,
+            matchName: name,
+            matchPhotoUrl: photo,
+            matchMode: mode,
+          );
         },
       ),
       GoRoute(
@@ -121,6 +128,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.photoVerification,
         name: RouteNames.photoVerification,
         builder: (context, state) => const PhotoVerificationScreen(),
+      ),
+      GoRoute(
+        path: '/profile/:id',
+        name: RouteNames.profileView,
+        builder: (context, state) {
+          final profileId = state.pathParameters['id'] ?? '';
+          return ProfileDetailScreen(profileId: profileId);
+        },
       ),
     ],
   );

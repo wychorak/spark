@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,7 @@ import 'package:spark/core/router/app_router.dart';
 import 'package:spark/core/theme/app_theme.dart';
 import 'package:spark/shared/providers/auth_provider.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
+import 'package:spark/core/utils/error_helpers.dart';
 import 'package:spark/shared/widgets/neon_text_field.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -72,13 +74,34 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             email: _emailController.text.trim(),
             password: _passwordController.text,
           );
-      if (mounted) {
-        context.go(RoutePaths.onboarding);
+
+      // AsyncValue.guard never throws — check session manually
+      final user = Supabase.instance.client.auth.currentUser;
+      if (!mounted) return;
+
+      if (user == null) {
+        final authState = ref.read(authActionsProvider);
+        final errMsg = authState.maybeWhen(
+          error: (e, _) => friendlyAuthError(e),
+          orElse: () => AppStrings.registerFailed,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errMsg),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
       }
-    } catch (_) {
+
+      context.go(RoutePaths.onboarding);
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppStrings.registerFailed)),
+          SnackBar(
+            content: Text(friendlyAuthError(e)),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     } finally {

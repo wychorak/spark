@@ -10,7 +10,9 @@ import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/router/app_router.dart';
+import 'package:spark/shared/providers/auth_provider.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ── Toggle providers ──
 
@@ -27,6 +29,8 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final userEmail = ref.watch(currentUserProvider)?.email ?? '';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -62,7 +66,7 @@ class SettingsScreen extends ConsumerWidget {
                   icon: Icons.email_outlined,
                   title: AppStrings.email,
                   trailing: Text(
-                    'aleksandra@spark.pl',
+                    userEmail,
                     style: GoogleFonts.outfit(
                       fontSize: 13,
                       color: AppColors.textHint,
@@ -72,8 +76,8 @@ class SettingsScreen extends ConsumerWidget {
                 const _NeonDivider(),
                 _ActionTile(
                   icon: Icons.lock_outline,
-                  title: 'Zmien haslo',
-                  onTap: () {},
+                  title: 'Zmień hasło',
+                  onTap: () => _handleChangePassword(context, userEmail),
                 ),
                 const _NeonDivider(),
                 _ToggleTile(
@@ -99,7 +103,7 @@ class SettingsScreen extends ConsumerWidget {
                 const _NeonDivider(),
                 _ToggleTile(
                   icon: Icons.chat_bubble_outline,
-                  title: 'Wiadomosci',
+                  title: 'Wiadomości',
                   provider: _notifyMessagesProvider,
                 ),
                 const _NeonDivider(),
@@ -126,13 +130,13 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 _ToggleTile(
                   icon: Icons.location_on_outlined,
-                  title: 'Pokazuj odleglosc',
+                  title: 'Pokazuj odległość',
                   provider: _showDistanceProvider,
                 ),
                 const _NeonDivider(),
                 _ToggleTile(
                   icon: Icons.visibility_outlined,
-                  title: 'Pokazuj status aktywnosci',
+                  title: 'Pokazuj status aktywności',
                   provider: _showActivityProvider,
                 ),
               ],
@@ -147,7 +151,7 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 _ActionTile(
                   icon: Icons.workspace_premium,
-                  title: 'Przejdz na Premium',
+                  title: 'Przejdź na Premium',
                   titleColor: AppColors.neonPink,
                   iconColor: AppColors.neonPink,
                   trailing: Container(
@@ -179,7 +183,7 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 _ActionTile(
                   icon: Icons.block,
-                  title: 'Zablokowani uzytkownicy',
+                  title: 'Zablokowani użytkownicy',
                   trailing: Text(
                     '3',
                     style: GoogleFonts.outfit(
@@ -220,7 +224,7 @@ class SettingsScreen extends ConsumerWidget {
                 const _NeonDivider(),
                 _ActionTile(
                   icon: Icons.bug_report_outlined,
-                  title: 'Zglos blad',
+                  title: 'Zgłoś błąd',
                   onTap: () {},
                 ),
               ],
@@ -257,7 +261,7 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.logout,
                 color: AppColors.error,
                 onPressed: () {
-                  _showLogoutDialog(context);
+                  _showLogoutDialog(context, ref);
                 },
               ),
             ),
@@ -267,7 +271,7 @@ class SettingsScreen extends ConsumerWidget {
             // ── Usun konto ──
             Center(
               child: TextButton(
-                onPressed: () => _showDeleteAccountDialog(context),
+                onPressed: () => _showDeleteAccountDialog(context, ref),
                 child: Text(
                   AppStrings.settingsDeleteAccount,
                   style: GoogleFonts.outfit(
@@ -298,7 +302,37 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showLogoutDialog(BuildContext context) {
+  Future<void> _handleChangePassword(BuildContext context, String email) async {
+    if (email.isEmpty) return;
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Link do zmiany hasła został wysłany na $email',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: AppColors.surface,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Nie udało się wysłać linku do zmiany hasła',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -314,7 +348,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         content: Text(
-          'Czy na pewno chcesz sie wylogowac?',
+          'Czy na pewno chcesz się wylogować?',
           style: GoogleFonts.outfit(color: AppColors.textSecondary),
         ),
         actions: [
@@ -326,9 +360,12 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              // TODO: Implement logout
+              await ref.read(authActionsProvider.notifier).signOut();
+              if (context.mounted) {
+                context.go(RoutePaths.splash);
+              }
             },
             child: Text(
               AppStrings.logout,
@@ -343,7 +380,7 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteAccountDialog(BuildContext context) {
+  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -371,9 +408,27 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              // TODO: Implement account deletion
+              try {
+                await Supabase.instance.client.rpc('fn_delete_account');
+                await ref.read(authActionsProvider.notifier).signOut();
+                if (context.mounted) {
+                  context.go(RoutePaths.splash);
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Nie udało się usunąć konta. Spróbuj ponownie.',
+                        style: GoogleFonts.outfit(),
+                      ),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              }
             },
             child: Text(
               AppStrings.delete,

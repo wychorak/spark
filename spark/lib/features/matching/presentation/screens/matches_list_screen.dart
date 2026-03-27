@@ -3,122 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
-
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/theme/app_theme.dart';
-
-// ─── Mock Data ──────────────────────────────────────────────
-
-class MockMatch {
-  final String id;
-  final String name;
-  final String photoUrl;
-  final String mode;
-  final bool isNew;
-  final String? lastMessage;
-  final DateTime? lastMessageTime;
-  final int unreadCount;
-
-  const MockMatch({
-    required this.id,
-    required this.name,
-    required this.photoUrl,
-    required this.mode,
-    this.isNew = false,
-    this.lastMessage,
-    this.lastMessageTime,
-    this.unreadCount = 0,
-  });
-}
-
-final List<MockMatch> _mockNewMatches = [
-  const MockMatch(
-    id: 'm1',
-    name: 'Kasia',
-    photoUrl: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=200',
-    mode: 'relationship',
-    isNew: true,
-  ),
-  const MockMatch(
-    id: 'm2',
-    name: 'Maja',
-    photoUrl: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200',
-    mode: 'friends',
-    isNew: true,
-  ),
-  const MockMatch(
-    id: 'm3',
-    name: 'Zuza',
-    photoUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
-    mode: 'relationship',
-    isNew: true,
-  ),
-];
-
-final List<MockMatch> _mockConversations = [
-  MockMatch(
-    id: 'c1',
-    name: 'Ola',
-    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200',
-    mode: 'fwb',
-    lastMessage: 'Hej, co słychać? 😊',
-    lastMessageTime: DateTime.now().subtract(const Duration(minutes: 5)),
-    unreadCount: 2,
-  ),
-  MockMatch(
-    id: 'c2',
-    name: 'Ania',
-    photoUrl: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200',
-    mode: 'friends',
-    lastMessage: 'Jasne, spotkajmy się w sobotę!',
-    lastMessageTime: DateTime.now().subtract(const Duration(hours: 2)),
-    unreadCount: 0,
-  ),
-  MockMatch(
-    id: 'c3',
-    name: 'Natalia',
-    photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-    mode: 'relationship',
-    lastMessage: 'Ten film był świetny!',
-    lastMessageTime: DateTime.now().subtract(const Duration(days: 1)),
-    unreadCount: 0,
-  ),
-  MockMatch(
-    id: 'c4',
-    name: 'Weronika',
-    photoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200',
-    mode: 'relationship',
-    lastMessage: 'Dzięki za polecenie 🎵',
-    lastMessageTime: DateTime.now().subtract(const Duration(days: 2)),
-    unreadCount: 0,
-  ),
-];
-
-// Blurred premium "who liked you"
-final List<MockMatch> _mockLikedYou = [
-  const MockMatch(
-    id: 'p1',
-    name: '???',
-    photoUrl: 'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=200',
-    mode: 'relationship',
-  ),
-  const MockMatch(
-    id: 'p2',
-    name: '???',
-    photoUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
-    mode: 'friends',
-  ),
-  const MockMatch(
-    id: 'p3',
-    name: '???',
-    photoUrl: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=200',
-    mode: 'fwb',
-  ),
-];
+import 'package:spark/shared/providers/match_chat_provider.dart';
 
 // ─── Matches List Screen ────────────────────────────────────
 
@@ -127,8 +18,7 @@ class MatchesListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hasMatches =
-        _mockNewMatches.isNotEmpty || _mockConversations.isNotEmpty;
+    final matchesAsync = ref.watch(matchesWithProfileProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -146,59 +36,117 @@ class MatchesListScreen extends ConsumerWidget {
           ),
         ),
       ),
-      body: hasMatches
-          ? ListView(
-              padding: const EdgeInsets.only(bottom: 100),
-              children: [
-                // ── New matches horizontal scroll ──
-                if (_mockNewMatches.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                        AppDimensions.screenPadding, 8, AppDimensions.screenPadding, 12),
-                    child: Text(
-                      'Nowe pary',
-                      style: GoogleFonts.outfit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 100,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: AppDimensions.screenPadding),
-                      itemCount: _mockNewMatches.length,
-                      separatorBuilder: (_, __) => const Gap(14),
-                      itemBuilder: (context, i) {
-                        final match = _mockNewMatches[i];
-                        return _NewMatchAvatar(
-                          match: match,
-                          onTap: () => _openChat(context, match),
-                        )
-                            .animate()
-                            .fadeIn(delay: (i * 100).ms, duration: 400.ms)
-                            .slideX(begin: 0.2);
-                      },
-                    ),
-                  ),
-                  const Gap(16),
-                ],
-
-                // ── Premium banner: who liked you ──
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppDimensions.screenPadding),
-                  child: _PremiumLikedBanner(),
+      body: matchesAsync.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+        error: (error, _) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  size: 60, color: AppColors.error),
+              const Gap(16),
+              Text(
+                'Coś poszło nie tak. Spróbuj ponownie.',
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  color: AppColors.textSecondary,
                 ),
-                const Gap(20),
+                textAlign: TextAlign.center,
+              ),
+              const Gap(16),
+              TextButton(
+                onPressed: () => ref.invalidate(matchesWithProfileProvider),
+                child: Text(
+                  'Odśwież',
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        data: (matches) {
+          final newMatches =
+              matches.where((m) => m.isNew).toList();
+          final conversations =
+              matches.where((m) => !m.isNew).toList();
 
-                // ── Active conversations ──
+          // Sort conversations by last message time (most recent first)
+          conversations.sort((a, b) {
+            final aTime = a.lastMessageAt ?? a.matchedAt;
+            final bTime = b.lastMessageAt ?? b.matchedAt;
+            return bTime.compareTo(aTime);
+          });
+
+          final hasMatches =
+              newMatches.isNotEmpty || conversations.isNotEmpty;
+
+          if (!hasMatches) return _buildEmptyState();
+
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 100),
+            children: [
+              // ── New matches horizontal scroll ──
+              if (newMatches.isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                      AppDimensions.screenPadding, 0, AppDimensions.screenPadding, 12),
+                      AppDimensions.screenPadding,
+                      8,
+                      AppDimensions.screenPadding,
+                      12),
+                  child: Text(
+                    'Nowe pary',
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  height: 100,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppDimensions.screenPadding),
+                    itemCount: newMatches.length,
+                    separatorBuilder: (_, __) => const Gap(14),
+                    itemBuilder: (context, i) {
+                      final match = newMatches[i];
+                      return _NewMatchAvatar(
+                        match: match,
+                        onTap: () => _openChat(context, match),
+                      )
+                          .animate()
+                          .fadeIn(delay: (i * 100).ms, duration: 400.ms)
+                          .slideX(begin: 0.2);
+                    },
+                  ),
+                ),
+                const Gap(16),
+              ],
+
+              // ── Premium banner: who liked you ──
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.screenPadding),
+                child: _PremiumLikedBanner(),
+              ),
+              const Gap(20),
+
+              // ── Active conversations ──
+              if (conversations.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppDimensions.screenPadding,
+                      0,
+                      AppDimensions.screenPadding,
+                      12),
                   child: Text(
                     AppStrings.chatTitle,
                     style: GoogleFonts.outfit(
@@ -208,7 +156,7 @@ class MatchesListScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                ..._mockConversations.asMap().entries.map((entry) {
+                ...conversations.asMap().entries.map((entry) {
                   final i = entry.key;
                   final convo = entry.value;
                   return _ConversationTile(
@@ -220,8 +168,10 @@ class MatchesListScreen extends ConsumerWidget {
                       .slideX(begin: 0.05);
                 }),
               ],
-            )
-          : _buildEmptyState(),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -246,15 +196,12 @@ class MatchesListScreen extends ConsumerWidget {
     ).animate().fadeIn(duration: 500.ms);
   }
 
-  void _openChat(BuildContext context, MockMatch match) {
-    // Navigate to chat screen
-    // context.push('/chat/${match.id}');
-    // For now, show a snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Otwieranie czatu z ${match.name}...'),
-        backgroundColor: AppColors.surfaceLight,
-      ),
+  void _openChat(BuildContext context, MatchWithProfile match) {
+    context.push(
+      '/chat/${match.conversationId}'
+      '?name=${Uri.encodeComponent(match.otherUserName)}'
+      '&photo=${Uri.encodeComponent(match.otherUserPhotoUrl)}'
+      '&mode=${match.otherUserMode}',
     );
   }
 }
@@ -262,14 +209,14 @@ class MatchesListScreen extends ConsumerWidget {
 // ─── New Match Avatar ───────────────────────────────────────
 
 class _NewMatchAvatar extends StatelessWidget {
-  final MockMatch match;
+  final MatchWithProfile match;
   final VoidCallback onTap;
 
   const _NewMatchAvatar({required this.match, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final modeColor = AppColors.colorForMode(match.mode);
+    final modeColor = AppColors.colorForMode(match.otherUserMode);
 
     return GestureDetector(
       onTap: onTap,
@@ -291,7 +238,7 @@ class _NewMatchAvatar extends StatelessWidget {
             ),
             child: ClipOval(
               child: CachedNetworkImage(
-                imageUrl: match.photoUrl,
+                imageUrl: match.otherUserPhotoUrl,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
                   color: AppColors.surfaceLight,
@@ -303,7 +250,7 @@ class _NewMatchAvatar extends StatelessWidget {
           ),
           const Gap(6),
           Text(
-            match.name,
+            match.otherUserName,
             style: GoogleFonts.outfit(
               fontSize: 12,
               color: AppColors.textPrimary,
@@ -319,11 +266,16 @@ class _NewMatchAvatar extends StatelessWidget {
 // ─── Premium Liked Banner ───────────────────────────────────
 
 class _PremiumLikedBanner extends StatelessWidget {
+  static const _mockBlurredPhotos = [
+    'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=200',
+    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
+    'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=200',
+  ];
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // Navigate to paywall
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Odblokuj Spark Premium!'),
@@ -349,14 +301,13 @@ class _PremiumLikedBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Blurred avatars
             SizedBox(
               width: 90,
               height: 50,
               child: Stack(
-                children: _mockLikedYou.asMap().entries.map((entry) {
+                children: _mockBlurredPhotos.asMap().entries.map((entry) {
                   final i = entry.key;
-                  final liked = entry.value;
+                  final photoUrl = entry.value;
                   return Positioned(
                     left: i * 22.0,
                     child: Container(
@@ -375,7 +326,7 @@ class _PremiumLikedBanner extends StatelessWidget {
                             BlendMode.srcATop,
                           ),
                           child: CachedNetworkImage(
-                            imageUrl: liked.photoUrl,
+                            imageUrl: photoUrl,
                             fit: BoxFit.cover,
                           ),
                         ),
@@ -407,7 +358,7 @@ class _PremiumLikedBanner extends StatelessWidget {
                   ),
                   const Gap(2),
                   Text(
-                    '${_mockLikedYou.length} osób czeka na Ciebie',
+                    '${_mockBlurredPhotos.length} osób czeka na Ciebie',
                     style: GoogleFonts.outfit(
                       fontSize: 12,
                       color: AppColors.textSecondary,
@@ -417,7 +368,8 @@ class _PremiumLikedBanner extends StatelessWidget {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
@@ -444,7 +396,7 @@ class _PremiumLikedBanner extends StatelessWidget {
 // ─── Conversation Tile ──────────────────────────────────────
 
 class _ConversationTile extends StatelessWidget {
-  final MockMatch match;
+  final MatchWithProfile match;
   final VoidCallback onTap;
 
   const _ConversationTile({required this.match, required this.onTap});
@@ -461,7 +413,7 @@ class _ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final modeColor = AppColors.colorForMode(match.mode);
+    final modeColor = AppColors.colorForMode(match.otherUserMode);
 
     return InkWell(
       onTap: onTap,
@@ -472,17 +424,17 @@ class _ConversationTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Avatar
             Container(
               width: 56,
               height: 56,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: modeColor.withValues(alpha: 0.4), width: 1.5),
+                border: Border.all(
+                    color: modeColor.withValues(alpha: 0.4), width: 1.5),
               ),
               child: ClipOval(
                 child: CachedNetworkImage(
-                  imageUrl: match.photoUrl,
+                  imageUrl: match.otherUserPhotoUrl,
                   fit: BoxFit.cover,
                   placeholder: (_, __) => Container(
                     color: AppColors.surfaceLight,
@@ -491,14 +443,12 @@ class _ConversationTile extends StatelessWidget {
               ),
             ),
             const Gap(14),
-
-            // Name + message preview
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    match.name,
+                    match.otherUserName,
                     style: GoogleFonts.outfit(
                       fontSize: 15,
                       fontWeight: match.unreadCount > 0
@@ -527,13 +477,11 @@ class _ConversationTile extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Time + unread badge
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  _formatTime(match.lastMessageTime),
+                  _formatTime(match.lastMessageAt),
                   style: GoogleFonts.outfit(
                     fontSize: 11,
                     color: match.unreadCount > 0

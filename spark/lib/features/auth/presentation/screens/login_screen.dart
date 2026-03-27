@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:gap/gap.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
@@ -12,6 +13,7 @@ import 'package:spark/core/router/app_router.dart';
 import 'package:spark/core/theme/app_theme.dart';
 import 'package:spark/shared/providers/auth_provider.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
+import 'package:spark/core/utils/error_helpers.dart';
 import 'package:spark/shared/widgets/neon_text_field.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -44,10 +46,49 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             email: _emailController.text.trim(),
             password: _passwordController.text,
           );
-    } catch (_) {
+
+      // AsyncValue.guard nigdy nie rzuca — sprawdzamy sesję ręcznie
+      final user = Supabase.instance.client.auth.currentUser;
+      if (!mounted) return;
+
+      if (user == null) {
+        final authState = ref.read(authActionsProvider);
+        final errMsg = authState.maybeWhen(
+          error: (e, _) => friendlyAuthError(e),
+          orElse: () => AppStrings.loginFailed,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errMsg),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+
+      // Check if profile exists
+      try {
+        final profile = await Supabase.instance.client
+            .from('user_profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle();
+        if (!mounted) return;
+        if (profile != null) {
+          context.go(RoutePaths.home);
+        } else {
+          context.go(RoutePaths.onboarding);
+        }
+      } catch (_) {
+        if (mounted) context.go(RoutePaths.home);
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppStrings.loginFailed)),
+          SnackBar(
+            content: Text(friendlyAuthError(e)),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     } finally {

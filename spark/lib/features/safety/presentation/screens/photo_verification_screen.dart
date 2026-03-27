@@ -640,7 +640,7 @@ class _ResultStep extends ConsumerWidget {
             const Gap(AppDimensions.spacing32),
 
             Text(
-              'Sprobuj ponownie',
+              'Spróbuj ponownie',
               style: GoogleFonts.outfit(
                 fontSize: 28,
                 fontWeight: FontWeight.w700,

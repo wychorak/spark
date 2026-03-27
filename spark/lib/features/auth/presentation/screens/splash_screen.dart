@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -11,7 +10,7 @@ import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/router/app_router.dart';
-import 'package:spark/shared/providers/auth_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -57,11 +56,26 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     Timer(const Duration(milliseconds: 2500), _navigate);
   }
 
-  void _navigate() {
+  void _navigate() async {
     if (!mounted) return;
-    final user = ref.read(currentUserProvider);
+    final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
-      context.go(RoutePaths.home);
+      // Check if profile exists
+      try {
+        final profile = await Supabase.instance.client
+            .from('user_profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle();
+        if (!mounted) return;
+        if (profile != null) {
+          context.go(RoutePaths.home);
+        } else {
+          context.go(RoutePaths.onboarding);
+        }
+      } catch (_) {
+        if (mounted) context.go(RoutePaths.home);
+      }
     } else {
       context.go(RoutePaths.ageGate);
     }
