@@ -106,7 +106,7 @@ class _NeonButtonState extends State<NeonButton> with SingleTickerProviderStateM
               borderRadius: BorderRadius.circular(widget.borderRadius),
               boxShadow: [
                 BoxShadow(
-                  color: widget.glowColor.withValues(alpha: _isPressed ? 0.6 : 0.4),
+                  color: widget.glowColor.withValues(alpha: _isPressed ? 0.3 : 0.2),
                   blurRadius: _isPressed
                       ? AppDimensions.neonBlurLarge
                       : AppDimensions.neonBlurMedium,
@@ -156,7 +156,7 @@ class _NeonButtonState extends State<NeonButton> with SingleTickerProviderStateM
   }
 }
 
-/// Variant: outlined neon button (no fill, neon border)
+/// Variant: outlined soft button (no fill, soft border)
 class NeonOutlinedButton extends StatelessWidget {
   const NeonOutlinedButton({
     super.key,
@@ -184,7 +184,7 @@ class NeonOutlinedButton extends StatelessWidget {
         height: height,
         decoration: AppTheme.neonGlowDecoration(
           color: color,
-          backgroundColor: AppColors.transparent,
+          backgroundColor: AppColors.white,
           blurRadius: AppDimensions.neonBlurSmall,
         ),
         child: Center(

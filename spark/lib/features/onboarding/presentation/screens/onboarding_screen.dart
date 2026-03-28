@@ -20,7 +20,7 @@ import 'package:spark/core/theme/app_theme.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
 import 'package:spark/shared/widgets/neon_text_field.dart';
 
-// ── Interest data ──
+// ── Interest data (names must match DB `interests` table exactly) ──
 const _interests = [
   {'emoji': '🎵', 'label': 'Muzyka'},
   {'emoji': '🎬', 'label': 'Film'},
@@ -35,8 +35,8 @@ const _interests = [
   {'emoji': '🍳', 'label': 'Gotowanie'},
   {'emoji': '🍷', 'label': 'Wino'},
   {'emoji': '☕', 'label': 'Kawa'},
-  {'emoji': '🐶', 'label': 'Psy'},
-  {'emoji': '🐱', 'label': 'Koty'},
+  {'emoji': '🐕', 'label': 'Psy'},
+  {'emoji': '🐈', 'label': 'Koty'},
   {'emoji': '🌿', 'label': 'Natura'},
   {'emoji': '🎭', 'label': 'Teatr'},
   {'emoji': '💃', 'label': 'Taniec'},
@@ -45,8 +45,8 @@ const _interests = [
   {'emoji': '🚴', 'label': 'Rower'},
   {'emoji': '🏊', 'label': 'Pływanie'},
   {'emoji': '🎧', 'label': 'Podcasty'},
-  {'emoji': '🖥️', 'label': 'Technologia'},
-  {'emoji': '🌍', 'label': 'Ekologia'},
+  {'emoji': '💻', 'label': 'Technologia'},
+  {'emoji': '♻️', 'label': 'Ekologia'},
   {'emoji': '🧩', 'label': 'Puzzle'},
   {'emoji': '🎪', 'label': 'Festiwale'},
   {'emoji': '🍕', 'label': 'Pizza'},
@@ -68,7 +68,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     with TickerProviderStateMixin {
   final _pageController = PageController();
   int _currentStep = 0;
-  static const _totalSteps = 7;
+  static const _totalSteps = 10;
 
   // Step 1: Name + birth date
   final _nameController = TextEditingController();
@@ -77,7 +77,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   // Step 2: Gender
   String? _selectedGender;
 
-  // Step 3: Photos – store bytes for web-compatible display
+  // Step 3: Photos
   final List<XFile?> _photos = List.filled(6, null);
   final Map<int, Uint8List> _photoBytes = {};
   final _picker = ImagePicker();
@@ -88,10 +88,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   // Step 5: Interests (min 3, max 5)
   final Set<int> _selectedInterests = {};
 
-  // Step 6: Modes
+  // Step 6: Desired interests in partner (min 3, max 5)
+  final Set<int> _selectedDesiredInterests = {};
+
+  // Step 7: Social media links
+  final _instagramController = TextEditingController();
+  final _tiktokController = TextEditingController();
+  final _snapchatController = TextEditingController();
+
+  // Step 8: Modes
   final Set<String> _selectedModes = {};
 
-  // Step 7: Location
+  // Step 9: Location
   bool _locationGranted = false;
   Position? _position;
 
@@ -119,6 +127,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     _pageController.dispose();
     _nameController.dispose();
     _bioController.dispose();
+    _instagramController.dispose();
+    _tiktokController.dispose();
+    _snapchatController.dispose();
     for (final c in _modeControllers) {
       c.dispose();
     }
@@ -140,8 +151,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       case 4:
         return _selectedInterests.length >= _minInterests;
       case 5:
-        return _selectedModes.isNotEmpty;
+        return _selectedDesiredInterests.length >= _minInterests;
       case 6:
+        return true; // social media is optional
+      case 7:
+        return _selectedModes.isNotEmpty;
+      case 8:
+        return true;
+      case 9:
         return true;
       default:
         return false;
@@ -173,7 +190,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   Future<void> _pickPhoto(int index) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppDimensions.radiusXL),
@@ -185,14 +202,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.camera_alt, color: AppColors.neonPink),
+              leading: const Icon(Icons.camera_alt, color: AppColors.primary),
               title: Text('Aparat',
                   style: GoogleFonts.outfit(color: AppColors.textPrimary)),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
             ListTile(
               leading:
-                  const Icon(Icons.photo_library, color: AppColors.neonPink),
+                  const Icon(Icons.photo_library, color: AppColors.primary),
               title: Text('Galeria',
                   style: GoogleFonts.outfit(color: AppColors.textPrimary)),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
@@ -220,7 +237,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   }
 
   Future<void> _requestLocation() async {
-    // On web, use Geolocator directly (no permission_handler needed)
     try {
       if (kIsWeb) {
         final pos = await Geolocator.getCurrentPosition(
@@ -256,7 +272,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
     try {
       final supabase = Supabase.instance.client;
-      // Try refreshing session if needed
       User? user = supabase.auth.currentUser;
       if (user == null) {
         try {
@@ -265,13 +280,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         } catch (_) {}
       }
 
-      // If still null, navigate to home anyway — profile can be set up later
       if (user == null) {
         if (mounted) context.go(RoutePaths.home);
         return;
       }
 
-      // 1. Upload photos — failures are non-critical
+      // 1. Upload photos
       for (int i = 0; i < _photos.length; i++) {
         final photo = _photos[i];
         if (photo == null) continue;
@@ -283,12 +297,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             bytes,
             fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
           );
-        } catch (_) {
-          // skip failed photo uploads
-        }
+        } catch (_) {}
       }
 
-      // 2. Save profile via RPC (handles PostGIS & enum types server-side)
+      // 2. Save profile via RPC
       await supabase.rpc('fn_upsert_profile', params: {
         'p_display_name': _nameController.text.trim(),
         'p_born_at': _birthDate.toIso8601String().split('T').first,
@@ -301,13 +313,47 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       // 3. Save interests
       if (_selectedInterests.isNotEmpty) {
         try {
+          final interestNames = _selectedInterests
+              .map((i) => _interests[i]['label'] as String)
+              .toList();
           await supabase.rpc('fn_save_user_interests', params: {
-            'p_interest_names': _selectedInterests.toList(),
+            'p_interest_names': interestNames,
           });
         } catch (_) {}
       }
 
-      // 4. Save photo metadata to user_photos table
+      // 4. Save desired interests
+      if (_selectedDesiredInterests.isNotEmpty) {
+        try {
+          final desiredNames = _selectedDesiredInterests
+              .map((i) => _interests[i]['label'] as String)
+              .toList();
+          await supabase.from('user_profiles').update({
+            'desired_interests': desiredNames,
+          }).eq('id', user.id);
+        } catch (_) {}
+      }
+
+      // 5. Save social media handles
+      try {
+        final socialHandles = <String, String?>{};
+        if (_instagramController.text.trim().isNotEmpty) {
+          socialHandles['instagram'] = _instagramController.text.trim();
+        }
+        if (_tiktokController.text.trim().isNotEmpty) {
+          socialHandles['tiktok'] = _tiktokController.text.trim();
+        }
+        if (_snapchatController.text.trim().isNotEmpty) {
+          socialHandles['snapchat'] = _snapchatController.text.trim();
+        }
+        if (socialHandles.isNotEmpty) {
+          await supabase.from('user_profiles').update({
+            'social_links': socialHandles,
+          }).eq('id', user.id);
+        }
+      } catch (_) {}
+
+      // 6. Save photo metadata
       for (int i = 0; i < _photos.length; i++) {
         if (_photos[i] == null) continue;
         try {
@@ -320,16 +366,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         } catch (_) {}
       }
 
-      // 5. Update location if granted
+      // 7. Update location if granted
       if (_position != null) {
         try {
           await supabase.rpc('fn_update_user_location', params: {
             'lat': _position!.latitude,
             'lng': _position!.longitude,
           });
-        } catch (_) {
-          // location not critical
-        }
+        } catch (_) {}
       }
 
       if (mounted) {
@@ -384,7 +428,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                             height: 4,
                             width: MediaQuery.of(context).size.width *
                                 ((_currentStep + 1) / _totalSteps),
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               gradient: AppColors.neonPinkGradient,
                             ),
                           ),
@@ -415,8 +459,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                   _buildPhotosStep(),
                   _buildBioStep(),
                   _buildInterestsStep(),
+                  _buildDesiredInterestsStep(),
+                  _buildSocialMediaStep(),
                   _buildModeStep(),
                   _buildLocationStep(),
+                  _buildSummaryStep(),
                 ],
               ),
             ),
@@ -457,7 +504,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               fontSize: 24,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
-              shadows: AppTheme.neonTextShadow(blurRadius: 8),
             ),
           ).animate().fadeIn(duration: 500.ms),
           const Gap(AppDimensions.spacing24),
@@ -487,9 +533,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 lastDate: DateTime.now(),
                 builder: (ctx, child) => Theme(
                   data: Theme.of(ctx).copyWith(
-                    colorScheme: const ColorScheme.dark(
-                      primary: AppColors.neonPink,
-                      surface: AppColors.surface,
+                    colorScheme: ColorScheme.light(
+                      primary: AppColors.primary,
+                      surface: AppColors.white,
                       onSurface: AppColors.textPrimary,
                     ),
                   ),
@@ -501,11 +547,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(AppDimensions.paddingM),
-              decoration: AppTheme.subtleNeonGlow(),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+                border: Border.all(color: AppColors.divider),
+              ),
               child: Row(
                 children: [
                   const Icon(Icons.calendar_today,
-                      color: AppColors.neonPink, size: 20),
+                      color: AppColors.primary, size: 20),
                   const Gap(AppDimensions.spacing12),
                   Text(
                     '${_birthDate.day.toString().padLeft(2, '0')}.${_birthDate.month.toString().padLeft(2, '0')}.${_birthDate.year}',
@@ -554,7 +604,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               fontSize: 24,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
-              shadows: AppTheme.neonTextShadow(blurRadius: 8),
             ),
           ).animate().fadeIn(duration: 500.ms),
           const Gap(AppDimensions.spacing32),
@@ -573,25 +622,32 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       milliseconds: AppDimensions.animNormal),
                   width: double.infinity,
                   padding: const EdgeInsets.all(AppDimensions.paddingL),
-                  decoration: isSelected
-                      ? AppTheme.neonGlowDecoration(
-                          color: AppColors.neonPink,
-                          blurRadius: AppDimensions.neonBlurSmall,
-                          backgroundColor: AppColors.surface,
-                        )
-                      : BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(
-                              AppDimensions.radiusL),
-                          border: Border.all(
-                              color: AppColors.divider, width: 1),
-                        ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary.withValues(alpha: 0.08)
+                        : AppColors.white,
+                    borderRadius: BorderRadius.circular(
+                        AppDimensions.radiusL),
+                    border: Border.all(
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.divider,
+                        width: isSelected ? 1.5 : 1),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.15),
+                              blurRadius: 12,
+                            ),
+                          ]
+                        : null,
+                  ),
                   child: Row(
                     children: [
                       Icon(
                         g['icon'] as IconData,
                         color: isSelected
-                            ? AppColors.neonPink
+                            ? AppColors.primary
                             : AppColors.textSecondary,
                         size: AppDimensions.iconL,
                       ),
@@ -643,7 +699,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               fontSize: 24,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
-              shadows: AppTheme.neonTextShadow(blurRadius: 8),
             ),
           ).animate().fadeIn(duration: 500.ms),
           const Gap(AppDimensions.spacing8),
@@ -674,12 +729,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                     duration: const Duration(
                         milliseconds: AppDimensions.animFast),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
+                      color: AppColors.white,
                       borderRadius: BorderRadius.circular(
                           AppDimensions.radiusM),
                       border: Border.all(
                         color: hasPhoto
-                            ? AppColors.neonPink
+                            ? AppColors.primary
                                 .withValues(alpha: 0.6)
                             : AppColors.divider,
                         width: hasPhoto ? 1.5 : 1,
@@ -687,7 +742,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       boxShadow: hasPhoto
                           ? [
                               BoxShadow(
-                                color: AppColors.neonPinkGlow,
+                                color: AppColors.primary.withValues(alpha: 0.15),
                                 blurRadius: 8,
                               )
                             ]
@@ -710,8 +765,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                                   }),
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.overlay,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.black.withValues(alpha: 0.4),
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(Icons.close,
@@ -736,7 +791,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                                   'Wymagane',
                                   style: GoogleFonts.outfit(
                                     fontSize: 10,
-                                    color: AppColors.neonPink,
+                                    color: AppColors.primary,
                                   ),
                                 ),
                             ],
@@ -775,7 +830,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               fontSize: 24,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
-              shadows: AppTheme.neonTextShadow(blurRadius: 8),
             ),
           ).animate().fadeIn(duration: 500.ms),
           const Gap(AppDimensions.spacing24),
@@ -807,7 +861,28 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
   // ── Step 5: Interests ──
   Widget _buildInterestsStep() {
-    final remaining = _maxInterests - _selectedInterests.length;
+    return _buildInterestSelector(
+      title: AppStrings.onboardingInterests,
+      subtitle: 'Twoje zainteresowania',
+      selectedSet: _selectedInterests,
+    );
+  }
+
+  // ── Step 6: Desired Interests ──
+  Widget _buildDesiredInterestsStep() {
+    return _buildInterestSelector(
+      title: 'Poszukiwane zainteresowania',
+      subtitle: 'Czego szukasz u drugiej osoby?',
+      selectedSet: _selectedDesiredInterests,
+    );
+  }
+
+  Widget _buildInterestSelector({
+    required String title,
+    required String subtitle,
+    required Set<int> selectedSet,
+  }) {
+    final remaining = _maxInterests - selectedSet.length;
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.screenPadding),
@@ -816,28 +891,35 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         children: [
           const Gap(AppDimensions.spacing32),
           Text(
-            AppStrings.onboardingInterests,
+            title,
             style: GoogleFonts.outfit(
               fontSize: 24,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
-              shadows: AppTheme.neonTextShadow(blurRadius: 8),
             ),
           ).animate().fadeIn(duration: 500.ms),
+          const Gap(AppDimensions.spacing4),
+          Text(
+            subtitle,
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+            ),
+          ),
           const Gap(AppDimensions.spacing8),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: Text(
-              _selectedInterests.length < _minInterests
-                  ? 'Wybierz co najmniej $_minInterests (${_selectedInterests.length} wybrano)'
-                  : _selectedInterests.length == _maxInterests
-                      ? 'Maksimum osiągnięte ($_maxInterests/${_maxInterests} wybrano) ✓'
-                      : 'Możesz wybrać jeszcze $remaining (${_selectedInterests.length}/$_maxInterests wybrano)',
-              key: ValueKey(_selectedInterests.length),
+              selectedSet.length < _minInterests
+                  ? 'Wybierz co najmniej $_minInterests (${selectedSet.length} wybrano)'
+                  : selectedSet.length == _maxInterests
+                      ? 'Maksimum osiągnięte ($_maxInterests/$_maxInterests wybrano)'
+                      : 'Możesz wybrać jeszcze $remaining (${selectedSet.length}/$_maxInterests wybrano)',
+              key: ValueKey('${selectedSet.length}_$title'),
               style: GoogleFonts.outfit(
                 fontSize: 14,
-                color: _selectedInterests.length == _maxInterests
-                    ? AppColors.neonPink
+                color: selectedSet.length == _maxInterests
+                    ? AppColors.primary
                     : AppColors.textSecondary,
               ),
             ),
@@ -851,9 +933,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 children: _interests.asMap().entries.map((entry) {
                   final index = entry.key;
                   final item = entry.value;
-                  final isSelected = _selectedInterests.contains(index);
+                  final isSelected = selectedSet.contains(index);
                   final isDisabled = !isSelected &&
-                      _selectedInterests.length >= _maxInterests;
+                      selectedSet.length >= _maxInterests;
 
                   return GestureDetector(
                     onTap: isDisabled
@@ -861,9 +943,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                         : () {
                             setState(() {
                               if (isSelected) {
-                                _selectedInterests.remove(index);
+                                selectedSet.remove(index);
                               } else {
-                                _selectedInterests.add(index);
+                                selectedSet.add(index);
                               }
                             });
                           },
@@ -874,15 +956,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                           horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.2)
+                            ? AppColors.primary.withValues(alpha: 0.12)
                             : isDisabled
-                                ? AppColors.surface.withValues(alpha: 0.4)
-                                : AppColors.surface,
+                                ? AppColors.white.withValues(alpha: 0.5)
+                                : AppColors.white,
                         borderRadius: BorderRadius.circular(
                             AppDimensions.radiusRound),
                         border: Border.all(
                           color: isSelected
-                              ? AppColors.neonPink
+                              ? AppColors.primary
                               : isDisabled
                                   ? AppColors.divider
                                       .withValues(alpha: 0.3)
@@ -892,8 +974,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: AppColors.neonPinkGlow,
-                                  blurRadius: AppDimensions.neonBlurSmall,
+                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                  blurRadius: 8,
                                 ),
                               ]
                             : null,
@@ -923,7 +1005,66 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     );
   }
 
-  // ── Step 6: Mode selection ──
+  // ── Step 7: Social Media ──
+  Widget _buildSocialMediaStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Gap(AppDimensions.spacing32),
+          Text(
+            'Social media',
+            style: GoogleFonts.outfit(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ).animate().fadeIn(duration: 500.ms),
+          const Gap(AppDimensions.spacing8),
+          Text(
+            'Opcjonalne - dodaj swoje profile',
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const Gap(AppDimensions.spacing24),
+          _SocialField(
+            controller: _instagramController,
+            label: 'Instagram',
+            icon: Icons.camera_alt_outlined,
+            hint: '@twoj_instagram',
+          ),
+          const Gap(AppDimensions.spacing16),
+          _SocialField(
+            controller: _tiktokController,
+            label: 'TikTok',
+            icon: Icons.music_note_outlined,
+            hint: '@twoj_tiktok',
+          ),
+          const Gap(AppDimensions.spacing16),
+          _SocialField(
+            controller: _snapchatController,
+            label: 'Snapchat',
+            icon: Icons.snapchat_outlined,
+            hint: '@twoj_snapchat',
+          ),
+          const Gap(AppDimensions.spacing16),
+          Text(
+            'Twoje profile będą widoczne na Twoim profilu Spark',
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              color: AppColors.textHint,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 8: Mode selection ──
   Widget _buildModeStep() {
     final modes = [
       {
@@ -965,7 +1106,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               fontSize: 28,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
-              shadows: AppTheme.neonTextShadow(blurRadius: 12),
             ),
           )
               .animate()
@@ -1012,8 +1152,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? color.withValues(alpha: 0.12)
-                          : AppColors.surface,
+                          ? color.withValues(alpha: 0.08)
+                          : AppColors.white,
                       borderRadius:
                           BorderRadius.circular(AppDimensions.radiusXL),
                       border: Border.all(
@@ -1025,7 +1165,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                       boxShadow: isSelected
                           ? [
                               BoxShadow(
-                                color: color.withValues(alpha: 0.25),
+                                color: color.withValues(alpha: 0.15),
                                 blurRadius: 16,
                                 spreadRadius: 0,
                               )
@@ -1034,7 +1174,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                     ),
                     child: Row(
                       children: [
-                        // Icon container with glow
                         AnimatedContainer(
                           duration: const Duration(
                               milliseconds: AppDimensions.animNormal),
@@ -1042,11 +1181,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                           height: 56,
                           decoration: BoxDecoration(
                             color: color.withValues(
-                                alpha: isSelected ? 0.25 : 0.12),
+                                alpha: isSelected ? 0.15 : 0.08),
                             borderRadius: BorderRadius.circular(16),
                             border: isSelected
                                 ? Border.all(
-                                    color: color.withValues(alpha: 0.5),
+                                    color: color.withValues(alpha: 0.3),
                                     width: 1,
                                   )
                                 : null,
@@ -1088,7 +1227,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                             ],
                           ),
                         ),
-                        // Checkbox
                         AnimatedContainer(
                           duration: const Duration(
                               milliseconds: AppDimensions.animFast),
@@ -1133,7 +1271,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     );
   }
 
-  // ── Step 7: Location ──
+  // ── Step 9: Location ──
   Widget _buildLocationStep() {
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -1141,7 +1279,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Animated pulsing location icon
           _PulsingLocationIcon(granted: _locationGranted)
               .animate()
               .fadeIn(duration: 600.ms)
@@ -1155,7 +1292,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             duration: const Duration(milliseconds: 300),
             child: Text(
               _locationGranted
-                  ? 'Lokalizacja włączona! 🎉'
+                  ? 'Lokalizacja włączona!'
                   : 'Włącz lokalizację',
               key: ValueKey(_locationGranted),
               textAlign: TextAlign.center,
@@ -1163,9 +1300,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
                 color: _locationGranted
-                    ? AppColors.neonPink
+                    ? AppColors.primary
                     : AppColors.textPrimary,
-                shadows: AppTheme.neonTextShadow(blurRadius: 8),
               ),
             ),
           ),
@@ -1192,7 +1328,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             ),
             const Gap(AppDimensions.spacing16),
             TextButton(
-              onPressed: _nextStep, // Pomiń → przejdź dalej
+              onPressed: _nextStep,
               child: Text(
                 AppStrings.skip,
                 style: GoogleFonts.outfit(
@@ -1200,6 +1336,172 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ── Step 10: Summary ──
+  Widget _buildSummaryStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Gap(AppDimensions.spacing32),
+          Icon(Icons.check_circle_outline,
+              color: AppColors.primary, size: 64)
+              .animate()
+              .fadeIn(duration: 500.ms)
+              .scale(begin: const Offset(0.5, 0.5), duration: 500.ms),
+          const Gap(AppDimensions.spacing16),
+          Text(
+            'Wszystko gotowe!',
+            style: GoogleFonts.outfit(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ).animate().fadeIn(delay: 200.ms, duration: 500.ms),
+          const Gap(AppDimensions.spacing8),
+          Text(
+            'Twój profil Spark jest gotowy do odkrywania.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              color: AppColors.textSecondary,
+            ),
+          ).animate().fadeIn(delay: 400.ms, duration: 500.ms),
+          const Gap(AppDimensions.spacing32),
+          // Summary card
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
+              border: Border.all(color: AppColors.divider),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SummaryRow(label: 'Imię', value: _nameController.text.trim()),
+                _SummaryRow(
+                    label: 'Płeć',
+                    value: _selectedGender == 'female'
+                        ? 'Kobieta'
+                        : _selectedGender == 'male'
+                            ? 'Mężczyzna'
+                            : 'Niebinarna'),
+                _SummaryRow(
+                    label: 'Zdjęcia', value: '$_photoCount dodanych'),
+                _SummaryRow(
+                    label: 'Zainteresowania',
+                    value: '${_selectedInterests.length} wybranych'),
+                _SummaryRow(
+                    label: 'Poszukiwane',
+                    value: '${_selectedDesiredInterests.length} wybranych'),
+                if (_selectedModes.isNotEmpty)
+                  _SummaryRow(
+                      label: 'Tryby',
+                      value: _selectedModes.join(', ')),
+              ],
+            ),
+          ).animate().fadeIn(delay: 600.ms, duration: 500.ms),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Social Field ──
+class _SocialField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final String hint;
+
+  const _SocialField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    required this.hint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const Gap(8),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+            border: Border.all(color: AppColors.divider),
+          ),
+          child: TextField(
+            controller: controller,
+            style: GoogleFonts.outfit(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
+            decoration: InputDecoration(
+              prefixIcon: Icon(icon, color: AppColors.primary, size: 20),
+              hintText: hint,
+              hintStyle: GoogleFonts.outfit(
+                color: AppColors.textHint,
+                fontSize: 14,
+              ),
+              border: InputBorder.none,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Summary Row ──
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SummaryRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
         ],
       ),
     );
@@ -1248,18 +1550,18 @@ class _PulsingLocationIconState extends State<_PulsingLocationIcon>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: widget.granted
-              ? AppColors.neonPink.withValues(alpha: 0.15)
-              : AppColors.neonPink.withValues(alpha: 0.1),
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : AppColors.primary.withValues(alpha: 0.08),
           border: Border.all(
             color: widget.granted
-                ? AppColors.neonPink.withValues(alpha: 0.8)
-                : AppColors.neonPink.withValues(alpha: 0.3),
+                ? AppColors.primary.withValues(alpha: 0.8)
+                : AppColors.primary.withValues(alpha: 0.3),
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.neonPink
-                  .withValues(alpha: widget.granted ? 0.4 : 0.15),
+              color: AppColors.primary
+                  .withValues(alpha: widget.granted ? 0.3 : 0.1),
               blurRadius: 24,
               spreadRadius: 4,
             ),
@@ -1269,7 +1571,7 @@ class _PulsingLocationIconState extends State<_PulsingLocationIcon>
           widget.granted
               ? Icons.check_circle_outline_rounded
               : Icons.location_on_rounded,
-          color: AppColors.neonPink,
+          color: AppColors.primary,
           size: 52,
         ),
       ),

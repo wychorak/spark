@@ -17,6 +17,13 @@ class UserProfile {
   final String? spotifyTrackName;
   final String? spotifyArtist;
   final String? spotifyPreviewUrl;
+  final List<String> desiredInterests;
+  final String? instagramHandle;
+  final String? tiktokHandle;
+  final String? snapchatHandle;
+  final String? profileGradientStart;
+  final String? profileGradientEnd;
+  final String? spotifyArtworkUrl;
 
   const UserProfile({
     required this.id,
@@ -32,6 +39,13 @@ class UserProfile {
     this.spotifyTrackName,
     this.spotifyArtist,
     this.spotifyPreviewUrl,
+    this.desiredInterests = const [],
+    this.instagramHandle,
+    this.tiktokHandle,
+    this.snapchatHandle,
+    this.profileGradientStart,
+    this.profileGradientEnd,
+    this.spotifyArtworkUrl,
   });
 }
 
@@ -65,6 +79,16 @@ final profileByIdProvider =
         .where((s) => s.isNotEmpty)
         .toList();
   } catch (_) {}
+
+  // Desired interests
+  List<String> desiredInterests = [];
+  final dynamic rawDesired = profileRes['desired_interests'];
+  if (rawDesired is List) {
+    desiredInterests = rawDesired.map((e) => e.toString()).toList();
+  } else if (rawDesired is String) {
+    final cleaned = rawDesired.replaceAll('{', '').replaceAll('}', '');
+    desiredInterests = cleaned.split(',').where((s) => s.isNotEmpty).toList();
+  }
 
   // Photos from storage
   final List<String> photoUrls = [];
@@ -120,6 +144,13 @@ final profileByIdProvider =
     spotifyTrackName: profileRes['spotify_track_name']?.toString(),
     spotifyArtist: profileRes['spotify_artist_name']?.toString(),
     spotifyPreviewUrl: profileRes['spotify_preview_url']?.toString(),
+    desiredInterests: desiredInterests,
+    instagramHandle: profileRes['instagram_handle']?.toString(),
+    tiktokHandle: profileRes['tiktok_handle']?.toString(),
+    snapchatHandle: profileRes['snapchat_handle']?.toString(),
+    profileGradientStart: profileRes['profile_gradient_start']?.toString(),
+    profileGradientEnd: profileRes['profile_gradient_end']?.toString(),
+    spotifyArtworkUrl: profileRes['spotify_artwork_url']?.toString(),
   );
 });
 

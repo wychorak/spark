@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:spark/core/utils/web_audio.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
@@ -48,30 +48,29 @@ class ProfileDetailScreen extends StatefulWidget {
 
 class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   final PageController _pageController = PageController();
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  final WebAudio _audio = WebAudio();
   bool _isPlaying = false;
 
   @override
   void dispose() {
     _pageController.dispose();
-    _audioPlayer.dispose();
+    _audio.dispose();
     super.dispose();
   }
 
   Future<void> _toggleSpotifyPlay() async {
     if (widget.spotifyPreviewUrl == null) {
-      // Demo mode: just toggle icon
       setState(() => _isPlaying = !_isPlaying);
       return;
     }
     try {
       if (_isPlaying) {
-        await _audioPlayer.pause();
+        await _audio.pause();
+        setState(() => _isPlaying = false);
       } else {
-        await _audioPlayer.setUrl(widget.spotifyPreviewUrl!);
-        await _audioPlayer.play();
+        await _audio.play(widget.spotifyPreviewUrl!);
+        setState(() => _isPlaying = true);
       }
-      setState(() => _isPlaying = !_isPlaying);
     } catch (_) {
       setState(() => _isPlaying = false);
     }

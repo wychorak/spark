@@ -101,7 +101,7 @@ class _NeonTextFieldState extends State<NeonTextField>
                 ? [
                     BoxShadow(
                       color: widget.glowColor
-                          .withValues(alpha: 0.3 * _glowAnimation.value),
+                          .withValues(alpha: 0.15 * _glowAnimation.value),
                       blurRadius:
                           AppDimensions.neonBlurMedium * _glowAnimation.value,
                       spreadRadius: AppDimensions.neonSpreadSmall,
@@ -144,7 +144,7 @@ class _NeonTextFieldState extends State<NeonTextField>
               : null,
           suffixIcon: widget.suffixIcon,
           filled: true,
-          fillColor: AppColors.surfaceLight,
+          fillColor: AppColors.white,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: AppDimensions.paddingM,
             vertical: AppDimensions.paddingM,

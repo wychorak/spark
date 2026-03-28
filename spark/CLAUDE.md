@@ -1,10 +1,10 @@
 # SPARK – Project Memory & Architecture Rules
 
 ## Project Overview
-Spark – Y2K neon dating + friends + FWB app for iOS & Android (Flutter single codebase + Supabase backend).
-Main colors: `#FF1493` (deep pink) + `#000000` (black). Style: modern minimal + Y2K neon aesthetic.
+Spark – Cherry blossom dating + friends + FWB app for iOS & Android (Flutter single codebase + Supabase backend).
+Main colors: `#FF6B9D` (soft pink) + `#FFF5F7` (cream). Style: light cherry blossom aesthetic, glassmorphism.
 App language: **Polish** (all user-facing strings in Polish).
-Support email: sparksupportpolska@gmail.com
+Support email: sparksupport@gmail.com
 
 ## Tech Stack
 - **Frontend**: Flutter 3.24+ (Dart 3.5+)

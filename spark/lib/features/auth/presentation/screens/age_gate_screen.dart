@@ -92,12 +92,12 @@ class _AgeGateScreenState extends ConsumerState<AgeGateScreen> {
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Color(0xFF0D0008),
-              AppColors.background,
-              Color(0xFF05000D),
+              Color(0xFFFFF0F5),
+              Color(0xFFFFF5F7),
+              Color(0xFFFFE8F0),
             ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
         child: SafeArea(
@@ -109,6 +109,15 @@ class _AgeGateScreenState extends ConsumerState<AgeGateScreen> {
               children: [
                 const Gap(AppDimensions.spacing64),
 
+                // Logo
+                Image.network(
+                  'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/APP%20images/spark%20logo.png',
+                  height: 70,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ).animate().fadeIn(duration: 400.ms),
+                const Gap(24),
+
                 // Title
                 Text(
                   'Czy masz ukończone\n18 lat?',
@@ -117,10 +126,6 @@ class _AgeGateScreenState extends ConsumerState<AgeGateScreen> {
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
-                    shadows: AppTheme.neonTextShadow(
-                      color: AppColors.neonPink,
-                      blurRadius: 12,
-                    ),
                   ),
                 )
                     .animate()

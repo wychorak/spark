@@ -31,7 +31,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   void initState() {
     super.initState();
 
-    // Pulse glow animation for logo
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -40,7 +39,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // Expanding ring animation
     _ringController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
@@ -52,7 +50,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       CurvedAnimation(parent: _ringController, curve: Curves.easeOut),
     );
 
-    // Navigate after 2.5s
     Timer(const Duration(milliseconds: 2500), _navigate);
   }
 
@@ -60,7 +57,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
-      // Check if profile exists
       try {
         final profile = await Supabase.instance.client
             .from('user_profiles')
@@ -103,7 +99,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Expanding neon ring
+                  // Expanding ring
                   AnimatedBuilder(
                     animation: _ringController,
                     builder: (context, _) {
@@ -115,7 +111,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.neonPink.withValues(
+                              color: AppColors.primary.withValues(
                                 alpha: _ringOpacityAnimation.value,
                               ),
                               width: 2,
@@ -141,7 +137,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.neonPink
+                              color: AppColors.primary
                                   .withValues(alpha: opacity),
                               width: 1.5,
                             ),
@@ -159,26 +155,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         style: GoogleFonts.orbitron(
                           fontSize: 48,
                           fontWeight: FontWeight.w900,
-                          color: AppColors.neonPink,
+                          color: AppColors.primary,
                           letterSpacing: 8,
                           shadows: [
                             Shadow(
-                              color: AppColors.neonPink.withValues(
-                                alpha: 0.8 * _pulseAnimation.value,
+                              color: AppColors.primary.withValues(
+                                alpha: 0.6 * _pulseAnimation.value,
                               ),
-                              blurRadius: 20 * _pulseAnimation.value,
+                              blurRadius: 16 * _pulseAnimation.value,
                             ),
                             Shadow(
-                              color: AppColors.neonPink.withValues(
-                                alpha: 0.4 * _pulseAnimation.value,
-                              ),
-                              blurRadius: 40 * _pulseAnimation.value,
-                            ),
-                            Shadow(
-                              color: AppColors.neonPinkGlow.withValues(
+                              color: AppColors.primary.withValues(
                                 alpha: 0.3 * _pulseAnimation.value,
                               ),
-                              blurRadius: 80 * _pulseAnimation.value,
+                              blurRadius: 32 * _pulseAnimation.value,
                             ),
                           ],
                         ),

@@ -1,30 +1,53 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:spark/core/utils/web_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
-import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
-import 'package:spark/core/theme/app_theme.dart';
-import 'package:spark/shared/widgets/neon_button.dart';
 import 'package:spark/features/matching/presentation/screens/match_screen.dart';
 
-// ─── Discovery Profile (replaces MockProfile) ───────────────
+// ─── Interest emojis ────────────────────────────────────────
+
+const Map<String, String> _kDiscoveryInterestEmojis = {
+  'Muzyka': '🎵', 'Film': '🎬', 'Ksiazki': '📚', 'Gry': '🎮',
+  'Sport': '⚽', 'Silownia': '🏋️', 'Joga': '🧘', 'Sztuka': '🎨',
+  'Fotografia': '📸', 'Podroze': '✈️', 'Gotowanie': '🍳', 'Wino': '🍷',
+  'Kawa': '☕', 'Psy': '🐕', 'Koty': '🐈', 'Natura': '🌿',
+  'Teatr': '🎭', 'Taniec': '💃', 'Karaoke': '🎤', 'Wspinaczka': '🧗',
+  'Rower': '🚴', 'Plywanie': '🏊', 'Podcasty': '🎧', 'Technologia': '💻',
+  'Ekologia': '♻️', 'Festiwale': '🎪', 'Stand-up': '🎙️', 'Netflix': '📺',
+  'Astrologia': '♈', 'Piwo': '🍺',
+};
+
+// ─── Haversine distance ──────────────────────────────────────
+
+double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+  const r = 6371.0;
+  final dLat = (lat2 - lat1) * (pi / 180);
+  final dLon = (lon2 - lon1) * (pi / 180);
+  final a = sin(dLat / 2) * sin(dLat / 2) +
+      cos(lat1 * (pi / 180)) *
+          cos(lat2 * (pi / 180)) *
+          sin(dLon / 2) *
+          sin(dLon / 2);
+  return r * 2 * atan2(sqrt(a), sqrt(1 - a));
+}
+
+// ─── Discovery Profile ──────────────────────────────────────
 
 class DiscoveryProfile {
   final String id;
   final String name;
   final int age;
   final double distanceKm;
-  final String mode; // 'relationship', 'friends', 'fwb'
+  final String mode;
   final List<String> photos;
   final String bio;
   final List<String> interests;
@@ -32,9 +55,12 @@ class DiscoveryProfile {
   final String? spotifyTrackName;
   final String? spotifyArtist;
   final String? spotifyPreviewUrl;
+  final String? spotifyArtworkUrl;
   final String? city;
   final String? gender;
   final double? score;
+  final Color? profileGradientStart;
+  final Color? profileGradientEnd;
 
   const DiscoveryProfile({
     required this.id,
@@ -49,9 +75,12 @@ class DiscoveryProfile {
     this.spotifyTrackName,
     this.spotifyArtist,
     this.spotifyPreviewUrl,
+    this.spotifyArtworkUrl,
     this.city,
     this.gender,
     this.score,
+    this.profileGradientStart,
+    this.profileGradientEnd,
   });
 }
 
@@ -69,11 +98,12 @@ final List<DiscoveryProfile> _mockProfiles = [
       'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
       'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600',
     ],
-    bio: 'Kocham podróże, kawę i dobre książki. Szukam kogoś, z kim mogę odkrywać świat 🌍',
-    interests: ['Podróże', 'Fotografia', 'Kawa', 'Joga', 'Książki'],
+    bio: 'Kocham podroze, kawe i dobre ksiazki. Szukam kogos, z kim moge odkrywac swiat',
+    interests: ['Podroze', 'Fotografia', 'Kawa', 'Joga', 'Ksiazki'],
     verified: true,
     spotifyTrackName: 'Blinding Lights',
     spotifyArtist: 'The Weeknd',
+    spotifyArtworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c9/5e/3c/c95e3cb1-fd47-3ef4-7c36-b7e8f4e1b1d5/source/100x100bb.jpg',
   ),
   const DiscoveryProfile(
     id: '2',
@@ -85,7 +115,7 @@ final List<DiscoveryProfile> _mockProfiles = [
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600',
       'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=600',
     ],
-    bio: 'Szukam ekipy na weekendowe wycieczki i wspólne gotowanie!',
+    bio: 'Szukam ekipy na weekendowe wycieczki i wspolne gotowanie!',
     interests: ['Gotowanie', 'Rower', 'Kino', 'Gry planszowe'],
     verified: false,
     spotifyTrackName: 'Levitating',
@@ -102,7 +132,7 @@ final List<DiscoveryProfile> _mockProfiles = [
       'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=600',
       'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600',
     ],
-    bio: 'Bez zobowiązań, z klasą. Lubię spontaniczne spotkania i dobrą muzykę.',
+    bio: 'Bez zobowiazan, z klasa. Lubie spontaniczne spotkania i dobra muzyke.',
     interests: ['Muzyka', 'Taniec', 'Fitness', 'Wino', 'Sztuka'],
     verified: true,
     spotifyTrackName: 'After Hours',
@@ -118,7 +148,7 @@ final List<DiscoveryProfile> _mockProfiles = [
       'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=600',
       'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600',
     ],
-    bio: 'Programistka z duszą artystki. Szukam kogoś z poczuciem humoru.',
+    bio: 'Programistka z dusza artystki. Szukam kogos z poczuciem humoru.',
     interests: ['Programowanie', 'Malarstwo', 'Koty', 'Anime', 'Bieganie'],
     verified: true,
     spotifyTrackName: 'As It Was',
@@ -133,13 +163,13 @@ final List<DiscoveryProfile> _mockProfiles = [
     photos: [
       'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=600',
     ],
-    bio: 'Nowa w mieście, chętnie poznam fajnych ludzi na wspólne wyjścia!',
-    interests: ['Koncerty', 'Hiking', 'Siatkówka', 'Kuchnia azjatycka'],
+    bio: 'Nowa w miescie, chetnie poznam fajnych ludzi na wspolne wyjscia!',
+    interests: ['Koncerty', 'Hiking', 'Siatkowka', 'Kuchnia azjatycka'],
     verified: false,
   ),
 ];
 
-// ─── Providers ───────────────────────────────────────────────
+// ─── Providers ──────────────────────────────────────────────
 
 const _supabaseStorageBase =
     'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/photos/';
@@ -201,7 +231,6 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
 
   @override
   DiscoveryState build() {
-    // Use Future.microtask to ensure state is settable after build
     Future.microtask(() => _loadProfiles());
     return const DiscoveryState(isLoading: true);
   }
@@ -217,7 +246,6 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         return;
       }
 
-      // Fetch blocked user IDs
       final Set<String> blockedIds = {};
       try {
         final blocksRes = await _supabase
@@ -236,7 +264,6 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         }
       } catch (_) {}
 
-      // Fetch already-swiped user IDs
       final Set<String> swipedIds = {};
       try {
         final swipesRes = await _supabase
@@ -245,6 +272,21 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
             .eq('user_id', userId);
         for (final s in swipesRes) {
           swipedIds.add(s['target_id'] as String);
+        }
+      } catch (_) {}
+
+      // Get current user's location
+      double? myLat;
+      double? myLon;
+      try {
+        final myProfile = await _supabase
+            .from('user_profiles')
+            .select('latitude, longitude')
+            .eq('id', userId)
+            .maybeSingle();
+        if (myProfile != null) {
+          myLat = (myProfile['latitude'] as num?)?.toDouble();
+          myLon = (myProfile['longitude'] as num?)?.toDouble();
         }
       } catch (_) {}
 
@@ -267,10 +309,10 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
       for (final row in data) {
         final profileId = row['id']?.toString() ?? '';
 
-        // Skip blocked and already-swiped users
-        if (blockedIds.contains(profileId) || swipedIds.contains(profileId)) continue;
+        if (blockedIds.contains(profileId) || swipedIds.contains(profileId)) {
+          continue;
+        }
 
-        // Fetch photos
         List<String> photoUrls = [];
         try {
           final photosRes = await _supabase
@@ -284,7 +326,6 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
               .cast<String>();
         } catch (_) {}
 
-        // Fetch interests
         List<String> interests = [];
         try {
           final intRes = await _supabase
@@ -301,7 +342,6 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
               .toList();
         } catch (_) {}
 
-        // Parse modes
         final rawModes = row['modes'];
         List<String> modesList = [];
         if (rawModes is List) {
@@ -312,41 +352,70 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         }
         final mode = modesList.isNotEmpty ? modesList.first : 'relationship';
 
-        // Calculate age
         int age = 0;
         final bornAt = row['born_at'];
         if (bornAt != null) {
           final born = DateTime.tryParse(bornAt.toString());
           if (born != null) {
             final now = DateTime.now();
-            age = now.year - born.year - (now.month < born.month || (now.month == born.month && now.day < born.day) ? 1 : 0);
+            age = now.year -
+                born.year -
+                (now.month < born.month ||
+                        (now.month == born.month && now.day < born.day)
+                    ? 1
+                    : 0);
           }
         }
 
-        // Filter by age and gender
         if (age < state.ageFilter.start || age > state.ageFilter.end) continue;
         final gender = row['gender']?.toString() ?? 'female';
         if (!state.genderFilters.contains(gender)) continue;
         if (!modesList.any((m) => state.modeFilters.contains(m))) continue;
 
+        Color? gradStart;
+        Color? gradEnd;
+        final gsRaw = row['profile_gradient_start'];
+        final geRaw = row['profile_gradient_end'];
+        if (gsRaw is String && gsRaw.isNotEmpty) {
+          gradStart = _parseHexColor(gsRaw);
+        }
+        if (geRaw is String && geRaw.isNotEmpty) {
+          gradEnd = _parseHexColor(geRaw);
+        }
+
+        // Calculate real distance
+        double distanceKm = 0.0;
+        final theirLat = (row['latitude'] as num?)?.toDouble();
+        final theirLon = (row['longitude'] as num?)?.toDouble();
+        if (myLat != null && myLon != null && theirLat != null && theirLon != null) {
+          distanceKm = _haversineKm(myLat, myLon, theirLat, theirLon);
+        } else {
+          distanceKm = Random().nextDouble() * 15 + 0.5;
+        }
+
         profiles.add(DiscoveryProfile(
           id: profileId,
           name: row['display_name']?.toString() ?? '',
           age: age,
-          distanceKm: (Random().nextDouble() * 10 + 0.5),
+          distanceKm: distanceKm,
           mode: mode,
           photos: photoUrls.isNotEmpty
               ? photoUrls
-              : ['https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600'],
+              : [
+                  'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600'
+                ],
           bio: row['bio']?.toString() ?? '',
           interests: interests,
           verified: row['is_verified'] == true,
           spotifyTrackName: row['spotify_track_name']?.toString(),
           spotifyArtist: row['spotify_artist_name']?.toString(),
           spotifyPreviewUrl: row['spotify_preview_url']?.toString(),
+          spotifyArtworkUrl: row['spotify_artwork_url']?.toString(),
           city: row['city']?.toString(),
           gender: gender,
           score: null,
+          profileGradientStart: gradStart,
+          profileGradientEnd: gradEnd,
         ));
       }
 
@@ -366,12 +435,24 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
     }
   }
 
+  static Color? _parseHexColor(String hex) {
+    try {
+      final cleaned = hex.replaceAll('#', '');
+      if (cleaned.length == 6) {
+        return Color(int.parse('FF$cleaned', radix: 16));
+      }
+      if (cleaned.length == 8) {
+        return Color(int.parse(cleaned, radix: 16));
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> refresh() async {
     state = state.copyWith(currentIndex: 0, passedProfiles: []);
     await _loadProfiles();
   }
 
-  /// Returns true if a match was created (mutual like detected by DB trigger)
   Future<bool> _recordSwipeAction(String action) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -392,7 +473,6 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         });
       } catch (_) {}
 
-      // Check if a match was created (DB trigger creates it on mutual like)
       if (action == 'like' || action == 'super_like') {
         final matchCheck = await _supabase
             .from('matches')
@@ -464,6 +544,23 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
     state = state.copyWith(modeFilters: modes);
   }
 
+  Future<bool> sendChatRequest(String targetId, String message) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return false;
+      await _supabase.from('chat_requests').insert({
+        'sender_id': userId,
+        'target_id': targetId,
+        'message': message,
+        'status': 'pending',
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Chat request error: $e');
+      return false;
+    }
+  }
+
   void toggleGenderFilter(String gender) {
     final genders = Set<String>.from(state.genderFilters);
     if (genders.contains(gender)) {
@@ -480,6 +577,25 @@ final discoveryProvider =
   DiscoveryNotifier.new,
 );
 
+// ─── Image Preloader ────────────────────────────────────────
+
+class _ImagePreloader {
+  static final Set<String> _preloadedUrls = {};
+
+  static void preloadImages(BuildContext context, List<DiscoveryProfile> profiles, int currentIndex) {
+    for (int i = currentIndex + 1; i <= currentIndex + 2 && i < profiles.length; i++) {
+      final photo = profiles[i].photos.first;
+      if (!_preloadedUrls.contains(photo)) {
+        _preloadedUrls.add(photo);
+        precacheImage(
+          NetworkImage(photo),
+          context,
+        );
+      }
+    }
+  }
+}
+
 // ─── Discovery Screen ───────────────────────────────────────
 
 class DiscoveryScreen extends ConsumerStatefulWidget {
@@ -493,90 +609,337 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
     with TickerProviderStateMixin {
   double _dragX = 0;
   double _dragY = 0;
-  late AnimationController _swipeController;
-  late AnimationController _particleController;
-  // ignore: unused_field
-  SwipeDirection? _swipeDirection;
-  bool _showParticles = false;
-  ParticleType _particleType = ParticleType.heart;
+  int _currentPhotoIndex = 0;
+  final bool _isPremium = false; // TODO: wire to actual premium state
 
   @override
-  void initState() {
-    super.initState();
-    _swipeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _particleController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _particleController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        setState(() => _showParticles = false);
-        _particleController.reset();
-      }
-    });
-  }
+  Widget build(BuildContext context) {
+    final state = ref.watch(discoveryProvider);
+    final notifier = ref.read(discoveryProvider.notifier);
+    final size = MediaQuery.of(context).size;
+    final topPadding = MediaQuery.of(context).padding.top;
 
-  @override
-  void dispose() {
-    _swipeController.dispose();
-    _particleController.dispose();
-    super.dispose();
-  }
-
-  void _onPanUpdate(DragUpdateDetails details) {
-    setState(() {
-      _dragX += details.delta.dx;
-      _dragY += details.delta.dy;
-    });
-  }
-
-  void _onPanEnd(DragEndDetails details) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final threshold = screenWidth * 0.3;
-
-    if (_dragX.abs() > threshold || _dragY < -threshold) {
-      if (_dragY < -threshold) {
-        _triggerSwipe(SwipeDirection.up);
-      } else if (_dragX > threshold) {
-        _triggerSwipe(SwipeDirection.right);
-      } else {
-        _triggerSwipe(SwipeDirection.left);
-      }
-    } else {
-      setState(() {
-        _dragX = 0;
-        _dragY = 0;
-      });
+    if (!state.isLoading && state.hasProfiles) {
+      _ImagePreloader.preloadImages(context, state.profiles, state.currentIndex);
     }
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          if (state.isLoading)
+            const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+                strokeWidth: 2,
+              ),
+            )
+          else if (state.hasProfiles)
+            RepaintBoundary(
+              child: _buildSwipeCard(state.currentProfile!, size),
+            )
+          else
+            _buildEmptyState(),
+
+          // Header
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _DiscoveryHeader(
+              topPadding: topPadding,
+              onFilterTap: () => _openFilters(),
+            ),
+          ),
+
+          // Bottom action bar
+          if (!state.isLoading && state.hasProfiles)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _ActionBar(
+                isPremium: _isPremium,
+                onPass: () => _triggerSwipe(SwipeDirection.left),
+                onSmash: () => _triggerSwipe(SwipeDirection.right),
+                onSuperLike: () => _triggerSwipe(SwipeDirection.up),
+                onUndo: () {
+                  if (_isPremium) {
+                    notifier.undo();
+                    setState(() => _currentPhotoIndex = 0);
+                  } else {
+                    _showPremiumPrompt();
+                  }
+                },
+                onChat: () => _showChatRequestSheet(state.currentProfile!),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSwipeCard(DiscoveryProfile profile, Size size) {
+    final angle = _dragX / 900;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    final gradStart = profile.profileGradientStart ?? const Color(0xFFFF6B9D);
+    final gradEnd = profile.profileGradientEnd ?? const Color(0xFFFF9F43);
+
+    return GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _dragX += details.delta.dx;
+          _dragY += details.delta.dy;
+        });
+      },
+      onPanEnd: (details) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final threshold = screenWidth * 0.3;
+
+        if (_dragX.abs() > threshold || _dragY < -threshold) {
+          if (_dragY < -threshold) {
+            _triggerSwipe(SwipeDirection.up);
+          } else if (_dragX > threshold) {
+            _triggerSwipe(SwipeDirection.right);
+          } else {
+            _triggerSwipe(SwipeDirection.left);
+          }
+        } else {
+          setState(() {
+            _dragX = 0;
+            _dragY = 0;
+          });
+        }
+      },
+      onTapUp: (details) {
+        final cardWidth = size.width - 20;
+        final tapX = details.localPosition.dx;
+        if (profile.photos.length > 1) {
+          if (tapX < cardWidth * 0.35) {
+            if (_currentPhotoIndex > 0) {
+              setState(() => _currentPhotoIndex--);
+            }
+          } else if (tapX > cardWidth * 0.65) {
+            if (_currentPhotoIndex < profile.photos.length - 1) {
+              setState(() => _currentPhotoIndex++);
+            }
+          } else {
+            _openProfileDetail(profile);
+          }
+        } else {
+          _openProfileDetail(profile);
+        }
+      },
+      child: Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..translate(_dragX, _dragY * 0.4)
+          ..rotateZ(angle),
+        child: Container(
+          margin: EdgeInsets.fromLTRB(10, topPadding + 70, 10, 130),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: AppColors.card,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.textPrimary.withValues(alpha: 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Photo with cacheWidth for performance
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Image.network(
+                    profile.photos[_currentPhotoIndex.clamp(0, profile.photos.length - 1)],
+                    key: ValueKey('${profile.id}_$_currentPhotoIndex'),
+                    fit: BoxFit.cover,
+                    cacheWidth: 600,
+                    cacheHeight: 900,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: AppColors.surfaceLight,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AppColors.surfaceLight,
+                      child: Icon(Icons.person_rounded,
+                          size: 80,
+                          color: AppColors.textHint.withValues(alpha: 0.3)),
+                    ),
+                  ),
+                ),
+
+                // Photo dots indicator
+                if (profile.photos.length > 1)
+                  Positioned(
+                    top: 12,
+                    left: 14,
+                    right: 14,
+                    child: _PhotoDotsIndicator(
+                      count: profile.photos.length,
+                      current: _currentPhotoIndex,
+                    ),
+                  ),
+
+                // Custom gradient overlay
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 300,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          gradStart.withValues(alpha: 0.15),
+                          gradEnd.withValues(alpha: 0.55),
+                          gradEnd.withValues(alpha: 0.85),
+                        ],
+                        stops: const [0.0, 0.3, 0.7, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Profile info overlay
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: _ProfileInfoOverlay(profile: profile),
+                ),
+
+                // Swipe indicators
+                if (_dragX > 50)
+                  Positioned(
+                    top: 80,
+                    left: 24,
+                    child: Transform.rotate(
+                      angle: -0.2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          border: Border.all(color: AppColors.primary, width: 2.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'SMASH',
+                          style: GoogleFonts.outfit(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (_dragX < -50)
+                  Positioned(
+                    top: 80,
+                    right: 24,
+                    child: Transform.rotate(
+                      angle: 0.2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          border: Border.all(
+                              color: AppColors.textHint.withValues(alpha: 0.6),
+                              width: 2.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'PASS',
+                          style: GoogleFonts.outfit(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textHint,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (_dragY < -50)
+                  Positioned(
+                    bottom: 220,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                          border: Border.all(color: const Color(0xFFFFD700), width: 2.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'SUPER LIKE',
+                          style: GoogleFonts.outfit(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFFFFD700),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _triggerSwipe(SwipeDirection direction) async {
-    _swipeDirection = direction;
     final notifier = ref.read(discoveryProvider.notifier);
 
     switch (direction) {
       case SwipeDirection.right:
-        _showParticleEffect(ParticleType.heart);
         await notifier.like();
         break;
       case SwipeDirection.left:
         notifier.pass();
         break;
       case SwipeDirection.up:
-        _showParticleEffect(ParticleType.star);
-        await notifier.superLike();
+        if (_isPremium) {
+          await notifier.superLike();
+        } else {
+          _showPremiumPrompt();
+          setState(() {
+            _dragX = 0;
+            _dragY = 0;
+          });
+          return;
+        }
         break;
     }
 
     setState(() {
       _dragX = 0;
       _dragY = 0;
+      _currentPhotoIndex = 0;
     });
 
-    // Show match screen if mutual like detected
     if (notifier.hasNewMatch && notifier.lastLikedProfile != null && mounted) {
       notifier.clearNewMatch();
       final matched = notifier.lastLikedProfile!;
@@ -584,11 +947,10 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
         PageRouteBuilder(
           opaque: false,
           pageBuilder: (_, __, ___) => MatchScreen(
-            matchPhotoUrl: matched.photos.isNotEmpty ? matched.photos.first : '',
+            matchPhotoUrl:
+                matched.photos.isNotEmpty ? matched.photos.first : '',
             matchName: matched.name,
-            onSendMessage: () {
-              Navigator.pop(context);
-            },
+            onSendMessage: () => Navigator.pop(context),
             onContinueBrowsing: () => Navigator.pop(context),
           ),
         ),
@@ -596,12 +958,201 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
     }
   }
 
-  void _showParticleEffect(ParticleType type) {
-    setState(() {
-      _showParticles = true;
-      _particleType = type;
-    });
-    _particleController.forward();
+  void _showPremiumPrompt() {
+    Navigator.of(context).pushNamed('/premium');
+  }
+
+  void _showChatRequestSheet(DiscoveryProfile profile) {
+    if (!_isPremium) {
+      _showPremiumPrompt();
+      return;
+    }
+    final msgController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36, height: 5,
+                        decoration: BoxDecoration(
+                          color: AppColors.textHint.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                    const Gap(20),
+                    Row(
+                      children: [
+                        const Icon(Icons.chat_bubble_rounded, color: AppColors.primary, size: 22),
+                        const Gap(10),
+                        Expanded(
+                          child: Text(
+                            'Wyślij wiadomość do ${profile.name}',
+                            style: GoogleFonts.outfit(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(8),
+                    Text(
+                      '${profile.name} musi zaakceptować Twoją wiadomość, aby móc rozmawiać.',
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const Gap(16),
+                    TextField(
+                      controller: msgController,
+                      autofocus: true,
+                      maxLines: 3,
+                      maxLength: 200,
+                      style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: 'Napisz coś miłego...',
+                        hintStyle: GoogleFonts.outfit(color: AppColors.textHint),
+                        filled: true,
+                        fillColor: AppColors.surfaceLight,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.all(16),
+                      ),
+                    ),
+                    const Gap(12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+                        label: Text(
+                          'Wyślij prośbę',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        onPressed: () async {
+                          final msg = msgController.text.trim();
+                          if (msg.isEmpty) return;
+                          Navigator.pop(ctx);
+                          final ok = await ref
+                              .read(discoveryProvider.notifier)
+                              .sendChatRequest(profile.id, msg);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  ok
+                                      ? 'Prośba o czat wysłana do ${profile.name}!'
+                                      : 'Nie udało się wysłać prośby.',
+                                  style: GoogleFonts.outfit(),
+                                ),
+                                backgroundColor: ok ? AppColors.success : AppColors.error,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.explore_outlined,
+                size: 44,
+                color: AppColors.primary.withValues(alpha: 0.4),
+              ),
+            ),
+            const Gap(24),
+            Text(
+              AppStrings.discoveryEmpty,
+              style: GoogleFonts.outfit(
+                fontSize: 17,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const Gap(24),
+            GestureDetector(
+              onTap: () => ref.read(discoveryProvider.notifier).refresh(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Text(
+                  'Odswiez',
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _openFilters() {
@@ -609,608 +1160,229 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppDimensions.radiusXL)),
-      ),
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final current = ref.read(discoveryProvider);
-            return Padding(
-              padding: const EdgeInsets.all(AppDimensions.paddingL),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.divider,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 36,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: AppColors.textHint.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                        const Gap(20),
+                        Text(
+                          AppStrings.discoveryFilters,
+                          style: GoogleFonts.outfit(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const Gap(28),
+                        Text(
+                          '${AppStrings.discoveryDistance}: ${current.distanceFilter.round()} km',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const Gap(4),
+                        SliderTheme(
+                          data: SliderThemeData(
+                            activeTrackColor: AppColors.primary,
+                            inactiveTrackColor: AppColors.textHint.withValues(alpha: 0.2),
+                            thumbColor: AppColors.primary,
+                            overlayColor: AppColors.primary.withValues(alpha: 0.15),
+                            trackHeight: 3,
+                          ),
+                          child: Slider(
+                            value: current.distanceFilter,
+                            min: 1,
+                            max: 150,
+                            onChanged: (v) {
+                              notifier.setDistanceFilter(v);
+                              setSheetState(() {});
+                            },
+                          ),
+                        ),
+                        const Gap(16),
+                        Text(
+                          '${AppStrings.discoveryAgeRange}: ${current.ageFilter.start.round()} - ${current.ageFilter.end.round()} lat',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const Gap(4),
+                        SliderTheme(
+                          data: SliderThemeData(
+                            activeTrackColor: AppColors.primary,
+                            inactiveTrackColor: AppColors.textHint.withValues(alpha: 0.2),
+                            thumbColor: AppColors.primary,
+                            overlayColor: AppColors.primary.withValues(alpha: 0.15),
+                            trackHeight: 3,
+                          ),
+                          child: RangeSlider(
+                            values: current.ageFilter,
+                            min: 18,
+                            max: 65,
+                            onChanged: (v) {
+                              notifier.setAgeFilter(v);
+                              setSheetState(() {});
+                            },
+                          ),
+                        ),
+                        const Gap(20),
+                        Text(
+                          'Tryb',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const Gap(10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ('relationship', AppStrings.onboardingModeRelationship, AppColors.modeRelationship),
+                            ('friends', AppStrings.onboardingModeFriends, AppColors.modeFriends),
+                            ('fwb', AppStrings.onboardingModeFWB, AppColors.modeFWB),
+                          ].map((e) {
+                            final selected = current.modeFilters.contains(e.$1);
+                            return GestureDetector(
+                              onTap: () {
+                                notifier.toggleModeFilter(e.$1);
+                                setSheetState(() {});
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: selected ? e.$3.withValues(alpha: 0.15) : AppColors.surfaceLight,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected ? e.$3.withValues(alpha: 0.5) : AppColors.divider,
+                                  ),
+                                ),
+                                child: Text(
+                                  e.$2,
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: selected ? e.$3 : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const Gap(20),
+                        Text(
+                          'Plec',
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const Gap(10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ('female', AppStrings.onboardingGenderFemale),
+                            ('male', AppStrings.onboardingGenderMale),
+                            ('nonbinary', AppStrings.onboardingGenderNonBinary),
+                          ].map((e) {
+                            final selected = current.genderFilters.contains(e.$1);
+                            return GestureDetector(
+                              onTap: () {
+                                notifier.toggleGenderFilter(e.$1);
+                                setSheetState(() {});
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? AppColors.primary.withValues(alpha: 0.12)
+                                      : AppColors.surfaceLight,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected
+                                        ? AppColors.primary.withValues(alpha: 0.4)
+                                        : AppColors.divider,
+                                  ),
+                                ),
+                                child: Text(
+                                  e.$2,
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: selected ? AppColors.primary : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const Gap(28),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: TextButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: Text(
+                              'Gotowe',
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const Gap(16),
+                      ],
                     ),
                   ),
-                  const Gap(16),
-                  Text(
-                    AppStrings.discoveryFilters,
-                    style: GoogleFonts.outfit(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Gap(24),
-
-                  // Distance slider
-                  Text(
-                    '${AppStrings.discoveryDistance}: ${current.distanceFilter.round()} ${AppStrings.km}',
-                    style: GoogleFonts.outfit(
-                      fontSize: 15,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  SliderTheme(
-                    data: SliderThemeData(
-                      activeTrackColor: AppColors.primary,
-                      inactiveTrackColor: AppColors.divider,
-                      thumbColor: AppColors.primary,
-                      overlayColor: AppColors.neonPinkGlow,
-                    ),
-                    child: Slider(
-                      value: current.distanceFilter,
-                      min: 1,
-                      max: 150,
-                      onChanged: (v) {
-                        notifier.setDistanceFilter(v);
-                        setSheetState(() {});
-                      },
-                    ),
-                  ),
-                  const Gap(16),
-
-                  // Age range slider
-                  Text(
-                    '${AppStrings.discoveryAgeRange}: ${current.ageFilter.start.round()} - ${current.ageFilter.end.round()} ${AppStrings.years}',
-                    style: GoogleFonts.outfit(
-                      fontSize: 15,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  SliderTheme(
-                    data: SliderThemeData(
-                      activeTrackColor: AppColors.primary,
-                      inactiveTrackColor: AppColors.divider,
-                      thumbColor: AppColors.primary,
-                      overlayColor: AppColors.neonPinkGlow,
-                    ),
-                    child: RangeSlider(
-                      values: current.ageFilter,
-                      min: 18,
-                      max: 65,
-                      onChanged: (v) {
-                        notifier.setAgeFilter(v);
-                        setSheetState(() {});
-                      },
-                    ),
-                  ),
-                  const Gap(16),
-
-                  // Mode checkboxes
-                  Text(
-                    'Tryb',
-                    style: GoogleFonts.outfit(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Gap(8),
-                  ...[
-                    ('relationship', AppStrings.onboardingModeRelationship,
-                        AppColors.modeRelationship),
-                    ('friends', AppStrings.onboardingModeFriends,
-                        AppColors.modeFriends),
-                    ('fwb', AppStrings.onboardingModeFWB, AppColors.modeFWB),
-                  ].map((e) {
-                    return CheckboxListTile(
-                      value: current.modeFilters.contains(e.$1),
-                      onChanged: (_) {
-                        notifier.toggleModeFilter(e.$1);
-                        setSheetState(() {});
-                      },
-                      title: Text(e.$2,
-                          style: TextStyle(color: e.$3, fontSize: 14)),
-                      activeColor: e.$3,
-                      checkColor: AppColors.black,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    );
-                  }),
-                  const Gap(16),
-
-                  // Gender checkboxes
-                  Text(
-                    'Płeć',
-                    style: GoogleFonts.outfit(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const Gap(8),
-                  ...[
-                    ('female', AppStrings.onboardingGenderFemale),
-                    ('male', AppStrings.onboardingGenderMale),
-                    ('nonbinary', AppStrings.onboardingGenderNonBinary),
-                  ].map((e) {
-                    return CheckboxListTile(
-                      value: current.genderFilters.contains(e.$1),
-                      onChanged: (_) {
-                        notifier.toggleGenderFilter(e.$1);
-                        setSheetState(() {});
-                      },
-                      title: Text(e.$2,
-                          style: const TextStyle(
-                              color: AppColors.textPrimary, fontSize: 14)),
-                      activeColor: AppColors.primary,
-                      checkColor: AppColors.black,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    );
-                  }),
-                  const Gap(24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: NeonButton(
-                      label: AppStrings.done,
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ),
-                  const Gap(16),
-                ],
+                ),
               ),
             );
           },
         );
       },
     );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(discoveryProvider);
-    final notifier = ref.read(discoveryProvider.notifier);
-    final size = MediaQuery.of(context).size;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        centerTitle: true,
-        title: Text(
-          AppStrings.appName,
-          style: GoogleFonts.outfit(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: AppColors.primary,
-            shadows: AppTheme.neonTextShadow(),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune_rounded, color: AppColors.textPrimary),
-            onPressed: _openFilters,
-          ),
-        ],
-      ),
-      body: state.isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            )
-          : state.hasProfiles
-              ? Stack(
-                  children: [
-                    // Current card
-                    _buildSwipeCard(state.currentProfile!, size),
-
-                    // Particle overlay
-                    if (_showParticles)
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: AnimatedBuilder(
-                            animation: _particleController,
-                            builder: (context, _) {
-                              return CustomPaint(
-                                painter: ParticlePainter(
-                                  progress: _particleController.value,
-                                  type: _particleType,
-                                  center: Offset(
-                                      size.width / 2, size.height / 2 - 60),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-
-                    // Bottom action bar
-                    Positioned(
-                      bottom: 24,
-                      left: 0,
-                      right: 0,
-                      child: _buildActionBar(notifier),
-                    ),
-                  ],
-                )
-              : _buildEmptyState(),
-    );
-  }
-
-  Widget _buildSwipeCard(DiscoveryProfile profile, Size size) {
-    final angle = _dragX / 800;
-    final modeColor = AppColors.colorForMode(profile.mode);
-
-    return GestureDetector(
-      onPanUpdate: _onPanUpdate,
-      onPanEnd: _onPanEnd,
-      onTap: () => _openProfileDetail(profile),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 0),
-        child: Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.identity()
-            ..translate(_dragX, _dragY)
-            ..rotateZ(angle),
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 130),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(
-                  AppDimensions.discoveryCardBorderRadius),
-              border: Border.all(color: modeColor.withValues(alpha: 0.6), width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: modeColor.withValues(alpha: 0.3),
-                  blurRadius: AppDimensions.neonBlurLarge,
-                  spreadRadius: AppDimensions.neonSpreadSmall,
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(
-                  AppDimensions.discoveryCardBorderRadius),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Photo
-                  CachedNetworkImage(
-                    imageUrl: profile.photos.first,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
-                      color: AppColors.surfaceLight,
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                            color: AppColors.primary),
-                      ),
-                    ),
-                    errorWidget: (_, __, ___) => Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            modeColor.withValues(alpha: 0.3),
-                            AppColors.surfaceLight,
-                          ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                      child: const Icon(Icons.person,
-                          size: 80, color: AppColors.textHint),
-                    ),
-                  ),
-
-                  // Bottom gradient
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      height: 260,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black87,
-                            Colors.black,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Info overlay
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppDimensions.paddingL),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Name + Age
-                          Row(
-                            children: [
-                              Text(
-                                '${profile.name}, ${profile.age}',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.white,
-                                ),
-                              ),
-                              if (profile.verified) ...[
-                                const Gap(8),
-                                const Icon(Icons.verified,
-                                    color: AppColors.info, size: 22),
-                              ],
-                            ],
-                          ),
-                          const Gap(4),
-
-                          // Distance
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on_outlined,
-                                  color: AppColors.textSecondary, size: 16),
-                              const Gap(4),
-                              Text(
-                                '${profile.distanceKm.toStringAsFixed(1)} ${AppStrings.km}',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 14,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Gap(8),
-
-                          // Mode badge
-                          _buildModeBadge(profile.mode, modeColor),
-                          const Gap(12),
-
-                          // Interests
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: profile.interests
-                                .take(4)
-                                .map((i) => Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.white.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(
-                                            AppDimensions.radiusRound),
-                                        border: Border.all(
-                                            color:
-                                                AppColors.white.withValues(alpha: 0.2)),
-                                      ),
-                                      child: Text(
-                                        i,
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 12,
-                                          color: AppColors.white,
-                                        ),
-                                      ),
-                                    ))
-                                .toList(),
-                          ),
-                          const Gap(12),
-
-                          // Spotify mini player
-                          if (profile.spotifyTrackName != null)
-                            _SpotifyMiniPlayer(
-                              trackName: profile.spotifyTrackName!,
-                              artist: profile.spotifyArtist ?? '',
-                              spotifyPreviewUrl: profile.spotifyPreviewUrl,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Swipe indicators
-                  if (_dragX > 40)
-                    Positioned(
-                      top: 60,
-                      left: 24,
-                      child: Transform.rotate(
-                        angle: -0.3,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            border:
-                                Border.all(color: AppColors.success, width: 3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            AppStrings.discoveryLike,
-                            style: GoogleFonts.outfit(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.success,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (_dragX < -40)
-                    Positioned(
-                      top: 60,
-                      right: 24,
-                      child: Transform.rotate(
-                        angle: 0.3,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            border:
-                                Border.all(color: AppColors.error, width: 3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            AppStrings.discoveryDislike,
-                            style: GoogleFonts.outfit(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.error,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (_dragY < -40)
-                    Positioned(
-                      bottom: 200,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                color: AppColors.warning, width: 3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            AppStrings.discoverySuperLike,
-                            style: GoogleFonts.outfit(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.warning,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeBadge(String mode, Color color) {
-    String label;
-    switch (mode) {
-      case 'friends':
-        label = AppStrings.onboardingModeFriends;
-        break;
-      case 'fwb':
-        label = AppStrings.onboardingModeFWB;
-        break;
-      default:
-        label = AppStrings.onboardingModeRelationship;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(AppDimensions.radiusRound),
-        border: Border.all(color: color, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.outfit(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionBar(DiscoveryNotifier notifier) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        // Undo (premium locked)
-        _ActionButton(
-          icon: Icons.replay_rounded,
-          color: AppColors.warning,
-          size: AppDimensions.discoveryActionButtonSize,
-          onTap: () {},
-          locked: true,
-        ),
-        // Pass
-        _ActionButton(
-          icon: Icons.close_rounded,
-          color: AppColors.error,
-          size: AppDimensions.discoveryActionButtonSizeLarge,
-          onTap: () => _triggerSwipe(SwipeDirection.left),
-        ),
-        // Like
-        _ActionButton(
-          icon: Icons.favorite_rounded,
-          color: AppColors.primary,
-          size: AppDimensions.discoveryActionButtonSizeLarge,
-          onTap: () => _triggerSwipe(SwipeDirection.right),
-        ),
-        // Super like
-        _ActionButton(
-          icon: Icons.star_rounded,
-          color: AppColors.warning,
-          size: AppDimensions.discoveryActionButtonSize,
-          onTap: () => _triggerSwipe(SwipeDirection.up),
-        ),
-        // Boost (premium locked)
-        _ActionButton(
-          icon: Icons.bolt_rounded,
-          color: AppColors.neonPurple,
-          size: AppDimensions.discoveryActionButtonSize,
-          onTap: () {},
-          locked: true,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.explore_off_rounded,
-              size: 80, color: AppColors.textHint),
-          const Gap(16),
-          Text(
-            AppStrings.discoveryEmpty,
-            style: GoogleFonts.outfit(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 500.ms);
   }
 
   void _openProfileDetail(DiscoveryProfile profile) {
@@ -1225,60 +1397,468 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
   }
 }
 
-// ─── Action Button ──────────────────────────────────────────
+// ─── Header Widget ──────────────────────────────────────────
 
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final double size;
-  final VoidCallback onTap;
-  final bool locked;
+class _DiscoveryHeader extends StatelessWidget {
+  final double topPadding;
+  final VoidCallback onFilterTap;
 
-  const _ActionButton({
-    required this.icon,
-    required this.color,
-    required this.size,
-    required this.onTap,
-    this.locked = false,
+  const _DiscoveryHeader({
+    required this.topPadding,
+    required this.onFilterTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: AppColors.surface,
-          border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 12,
-              spreadRadius: 1,
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          padding: EdgeInsets.only(
+            top: topPadding + 8,
+            bottom: 12,
+            left: 20,
+            right: 12,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.background.withValues(alpha: 0.85),
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.divider.withValues(alpha: 0.5),
+              ),
             ),
-          ],
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(icon, color: color, size: size * 0.45),
-            if (locked)
-              Positioned(
-                right: 4,
-                top: 4,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    color: AppColors.warning,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.lock,
-                      size: 10, color: AppColors.black),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                AppStrings.navDiscover,
+                style: GoogleFonts.outfit(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
                 ),
               ),
+              IconButton(
+                onPressed: onFilterTap,
+                icon: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    color: AppColors.textSecondary,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Photo Dots Indicator ───────────────────────────────────
+
+class _PhotoDotsIndicator extends StatelessWidget {
+  final int count;
+  final int current;
+
+  const _PhotoDotsIndicator({required this.count, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(
+        count,
+        (i) => Expanded(
+          child: Container(
+            height: 3.5,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: i == current ? Colors.white : Colors.white.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(2),
+              boxShadow: i == current
+                  ? [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4)]
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Profile Info Overlay ───────────────────────────────────
+
+class _ProfileInfoOverlay extends StatelessWidget {
+  final DiscoveryProfile profile;
+
+  const _ProfileInfoOverlay({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final modeColor = AppColors.colorForMode(profile.mode);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                profile.name,
+                style: GoogleFonts.outfit(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.1,
+                ),
+              ),
+              const Gap(8),
+              Text(
+                '${profile.age}',
+                style: GoogleFonts.outfit(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w300,
+                  color: Colors.white.withValues(alpha: 0.85),
+                  height: 1.1,
+                ),
+              ),
+              if (profile.verified) ...[
+                const Gap(8),
+                const Icon(Icons.verified_rounded, color: AppColors.info, size: 22),
+              ],
+            ],
+          ),
+          const Gap(6),
+          Row(
+            children: [
+              Icon(Icons.location_on_outlined,
+                  color: Colors.white.withValues(alpha: 0.6), size: 15),
+              const Gap(3),
+              Text(
+                '${profile.distanceKm.toStringAsFixed(1)} km',
+                style: GoogleFonts.outfit(
+                  fontSize: 14,
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              const Gap(12),
+              _ModeBadge(mode: profile.mode, color: modeColor),
+            ],
+          ),
+          const Gap(12),
+          if (profile.interests.isNotEmpty)
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: profile.interests.take(4).map((i) {
+                final emoji = _kDiscoveryInterestEmojis[i];
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    emoji != null ? '$emoji $i' : i,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          if (profile.spotifyTrackName != null) ...[
+            const Gap(12),
+            _SpotifyMiniPlayer(
+              trackName: profile.spotifyTrackName!,
+              artist: profile.spotifyArtist ?? '',
+              spotifyPreviewUrl: profile.spotifyPreviewUrl,
+              artworkUrl: profile.spotifyArtworkUrl,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Mode Badge ─────────────────────────────────────────────
+
+class _ModeBadge extends StatelessWidget {
+  final String mode;
+  final Color color;
+
+  const _ModeBadge({required this.mode, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    String label;
+    switch (mode) {
+      case 'friends':
+        label = AppStrings.onboardingModeFriends;
+        break;
+      case 'fwb':
+        label = AppStrings.onboardingModeFWB;
+        break;
+      default:
+        label = AppStrings.onboardingModeRelationship;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.outfit(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Action Bar ─────────────────────────────────────────────
+
+class _ActionBar extends StatelessWidget {
+  final bool isPremium;
+  final VoidCallback onPass;
+  final VoidCallback onSmash;
+  final VoidCallback onSuperLike;
+  final VoidCallback onUndo;
+  final VoidCallback onChat;
+
+  const _ActionBar({
+    required this.isPremium,
+    required this.onPass,
+    required this.onSmash,
+    required this.onSuperLike,
+    required this.onUndo,
+    required this.onChat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        child: Container(
+          padding: EdgeInsets.only(
+            top: 14,
+            bottom: bottomPadding + 14,
+            left: 20,
+            right: 20,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.7),
+            border: Border(
+              top: BorderSide(color: AppColors.divider.withValues(alpha: 0.5)),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // PASS
+              _ActionButton(
+                icon: Icons.close_rounded,
+                color: const Color(0xFFB0B0B8),
+                backgroundColor: const Color(0xFFF0F0F5),
+                size: 58,
+                iconSize: 26,
+                label: 'PASS',
+                onTap: onPass,
+              ),
+              // Cofnij (rewind)
+              _ActionButton(
+                icon: isPremium ? Icons.undo_rounded : Icons.lock_rounded,
+                color: AppColors.neonBlue,
+                backgroundColor: AppColors.neonBlue.withValues(alpha: 0.1),
+                size: 50,
+                iconSize: 22,
+                label: 'Cofnij',
+                onTap: onUndo,
+                showLock: !isPremium,
+              ),
+              // SMASH
+              _ActionButton(
+                icon: Icons.favorite_rounded,
+                color: AppColors.primary,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                size: 68,
+                iconSize: 30,
+                label: 'SMASH',
+                onTap: onSmash,
+              ),
+              // Chat request (premium)
+              _ActionButton(
+                icon: isPremium ? Icons.chat_bubble_rounded : Icons.lock_rounded,
+                color: const Color(0xFF74B9FF),
+                backgroundColor: const Color(0xFF74B9FF).withValues(alpha: 0.12),
+                size: 50,
+                iconSize: 22,
+                label: 'Czat',
+                onTap: onChat,
+                showLock: !isPremium,
+              ),
+              // Super Like
+              _ActionButton(
+                icon: isPremium ? Icons.star_rounded : Icons.lock_rounded,
+                color: const Color(0xFFFFBF00),
+                backgroundColor: const Color(0xFFFFBF00).withValues(alpha: 0.12),
+                size: 50,
+                iconSize: 22,
+                label: 'Super Like',
+                onTap: onSuperLike,
+                showLock: !isPremium,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Action Button ──────────────────────────────────────────
+
+class _ActionButton extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final Color backgroundColor;
+  final double size;
+  final double iconSize;
+  final String label;
+  final VoidCallback onTap;
+  final bool showLock;
+
+  const _ActionButton({
+    required this.icon,
+    required this.color,
+    required this.backgroundColor,
+    required this.size,
+    required this.iconSize,
+    required this.label,
+    required this.onTap,
+    this.showLock = false,
+  });
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+    );
+    _scaleAnim = Tween<double>(begin: 1.0, end: 0.88).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) {
+        _controller.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _controller.reverse(),
+      child: AnimatedBuilder(
+        animation: _scaleAnim,
+        builder: (context, child) {
+          return Transform.scale(scale: _scaleAnim.value, child: child);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: widget.size,
+                  height: widget.size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: widget.backgroundColor,
+                    border: Border.all(
+                      color: widget.color.withValues(alpha: 0.25),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.color.withValues(alpha: 0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    color: widget.color,
+                    size: widget.iconSize,
+                  ),
+                ),
+                if (widget.showLock)
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.divider, width: 1),
+                      ),
+                      child: const Icon(Icons.lock, size: 10, color: AppColors.textHint),
+                    ),
+                  ),
+              ],
+            ),
+            const Gap(4),
+            Text(
+              widget.label,
+              style: GoogleFonts.outfit(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
           ],
         ),
       ),
@@ -1292,11 +1872,13 @@ class _SpotifyMiniPlayer extends StatefulWidget {
   final String trackName;
   final String artist;
   final String? spotifyPreviewUrl;
+  final String? artworkUrl;
 
   const _SpotifyMiniPlayer({
     required this.trackName,
     required this.artist,
     this.spotifyPreviewUrl,
+    this.artworkUrl,
   });
 
   @override
@@ -1305,98 +1887,108 @@ class _SpotifyMiniPlayer extends StatefulWidget {
 
 class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
   bool _isPlaying = false;
-  late final AudioPlayer _audioPlayer;
-
-  @override
-  void initState() {
-    super.initState();
-    _audioPlayer = AudioPlayer();
-    _audioPlayer.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        if (mounted) setState(() => _isPlaying = false);
-      }
-    });
-  }
+  final WebAudio _audio = WebAudio();
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
+    _audio.dispose();
     super.dispose();
   }
 
   Future<void> _togglePlay() async {
     if (_isPlaying) {
-      await _audioPlayer.pause();
+      await _audio.pause();
       setState(() => _isPlaying = false);
     } else {
       final url = widget.spotifyPreviewUrl;
       if (url != null && url.isNotEmpty) {
         try {
-          await _audioPlayer.setUrl(url);
-          await _audioPlayer.play();
+          await _audio.play(url);
           setState(() => _isPlaying = true);
-        } catch (_) {
-          // Playback failed silently
-        }
+        } catch (_) {}
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.music_note_rounded,
-              color: AppColors.success, size: 18),
-          const Gap(8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.trackName,
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.white,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  widget.artist,
-                  style: GoogleFonts.outfit(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF1DB954).withValues(alpha: 0.3),
             ),
           ),
-          GestureDetector(
-            onTap: _togglePlay,
-            child: Icon(
-              _isPlaying
-                  ? Icons.pause_circle_filled_rounded
-                  : Icons.play_circle_filled_rounded,
-              color: AppColors.success,
-              size: 32,
-            ),
+          child: Row(
+            children: [
+              if (widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    widget.artworkUrl!,
+                    width: 36,
+                    height: 36,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.music_note_rounded,
+                      color: Color(0xFF1DB954),
+                      size: 18,
+                    ),
+                  ),
+                )
+              else
+                const Icon(Icons.music_note_rounded,
+                    color: Color(0xFF1DB954), size: 18),
+              const Gap(8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.trackName,
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      widget.artist,
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: _togglePlay,
+                child: Icon(
+                  _isPlaying
+                      ? Icons.pause_circle_filled_rounded
+                      : Icons.play_circle_filled_rounded,
+                  color: const Color(0xFF1DB954),
+                  size: 32,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-// ─── Full Profile View (expanded card) ──────────────────────
+// ─── Full Profile View ──────────────────────────────────────
 
 class _FullProfileView extends StatefulWidget {
   final DiscoveryProfile profile;
@@ -1410,6 +2002,7 @@ class _FullProfileView extends StatefulWidget {
 class _FullProfileViewState extends State<_FullProfileView> {
   final PageController _pageController = PageController();
   int _currentPhoto = 0;
+
   @override
   void dispose() {
     _pageController.dispose();
@@ -1420,6 +2013,7 @@ class _FullProfileViewState extends State<_FullProfileView> {
   Widget build(BuildContext context) {
     final profile = widget.profile;
     final modeColor = AppColors.colorForMode(profile.mode);
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -1428,7 +2022,6 @@ class _FullProfileViewState extends State<_FullProfileView> {
           SliverToBoxAdapter(
             child: Stack(
               children: [
-                // Photo PageView
                 SizedBox(
                   height: MediaQuery.of(context).size.height * 0.55,
                   child: PageView.builder(
@@ -1436,65 +2029,76 @@ class _FullProfileViewState extends State<_FullProfileView> {
                     itemCount: profile.photos.length,
                     onPageChanged: (i) => setState(() => _currentPhoto = i),
                     itemBuilder: (_, i) {
-                      return CachedNetworkImage(
-                        imageUrl: profile.photos[i],
+                      return Image.network(
+                        profile.photos[i],
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
-                          color: AppColors.surfaceLight,
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                                color: AppColors.primary),
-                          ),
-                        ),
+                        cacheWidth: 600,
+                        cacheHeight: 900,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            color: AppColors.surfaceLight,
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.primary,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
                   ),
                 ),
-
-                // Back button
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 8,
+                  top: topPadding + 8,
                   left: 16,
                   child: GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: AppColors.neonPinkGradient,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.neonPinkGlow,
-                            blurRadius: 12,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.divider),
                           ),
-                        ],
+                          child: const Icon(Icons.arrow_back_rounded,
+                              color: AppColors.textPrimary, size: 20),
+                        ),
                       ),
-                      child: const Icon(Icons.arrow_back_rounded,
-                          color: AppColors.white, size: 20),
                     ),
                   ),
                 ),
-
-                // Page indicator dots
+                if (profile.photos.length > 1)
+                  Positioned(
+                    top: topPadding + 16,
+                    left: 64,
+                    right: 16,
+                    child: _PhotoDotsIndicator(
+                      count: profile.photos.length,
+                      current: _currentPhoto,
+                    ),
+                  ),
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 16,
-                  left: 60,
-                  right: 16,
-                  child: Row(
-                    children: List.generate(
-                      profile.photos.length,
-                      (i) => Expanded(
-                        child: Container(
-                          height: 3,
-                          margin: const EdgeInsets.symmetric(horizontal: 2),
-                          decoration: BoxDecoration(
-                            color: i == _currentPhoto
-                                ? AppColors.white
-                                : AppColors.white.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 80,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          AppColors.background.withValues(alpha: 0.8),
+                          AppColors.background,
+                        ],
                       ),
                     ),
                   ),
@@ -1504,113 +2108,133 @@ class _FullProfileViewState extends State<_FullProfileView> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(AppDimensions.paddingL),
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Name + Age + Verified
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
-                        '${profile.name}, ${profile.age}',
+                        profile.name,
                         style: GoogleFonts.outfit(
-                          fontSize: 28,
+                          fontSize: 30,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.white,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const Gap(8),
+                      Text(
+                        '${profile.age}',
+                        style: GoogleFonts.outfit(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w300,
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       if (profile.verified) ...[
                         const Gap(8),
-                        const Icon(Icons.verified,
-                            color: AppColors.info, size: 24),
+                        const Icon(Icons.verified_rounded, color: AppColors.info, size: 24),
                       ],
                     ],
                   ),
-                  const Gap(4),
+                  const Gap(6),
                   Row(
                     children: [
                       const Icon(Icons.location_on_outlined,
-                          color: AppColors.textSecondary, size: 16),
-                      const Gap(4),
+                          color: AppColors.textHint, size: 15),
+                      const Gap(3),
                       Text(
-                        '${profile.distanceKm.toStringAsFixed(1)} ${AppStrings.km}',
+                        '${profile.distanceKm.toStringAsFixed(1)} km',
                         style: GoogleFonts.outfit(
                           fontSize: 14,
-                          color: AppColors.textSecondary,
+                          color: AppColors.textHint,
                         ),
                       ),
+                      const Gap(12),
+                      _DetailModeBadge(mode: profile.mode, color: modeColor),
                     ],
                   ),
-                  const Gap(12),
-
-                  // Mode badge
-                  _buildModeBadge(profile.mode, modeColor),
-                  const Gap(20),
-
-                  // Bio
-                  Text(
-                    AppStrings.profileAbout,
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+                  const Gap(24),
+                  if (profile.bio.isNotEmpty) ...[
+                    Text(
+                      AppStrings.profileAbout,
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textHint,
+                        letterSpacing: 1,
+                      ),
                     ),
-                  ),
-                  const Gap(8),
-                  Text(
-                    profile.bio,
-                    style: GoogleFonts.outfit(
-                      fontSize: 15,
-                      color: AppColors.textSecondary,
-                      height: 1.5,
+                    const Gap(8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.divider),
+                      ),
+                      child: Text(
+                        profile.bio,
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          color: AppColors.textPrimary.withValues(alpha: 0.8),
+                          height: 1.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
                     ),
-                  ),
-                  const Gap(20),
-
-                  // Interests
-                  Text(
-                    AppStrings.profileInterests,
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+                    const Gap(24),
+                  ],
+                  if (profile.interests.isNotEmpty) ...[
+                    Text(
+                      AppStrings.profileInterests,
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textHint,
+                        letterSpacing: 1,
+                      ),
                     ),
-                  ),
-                  const Gap(8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: profile.interests
-                        .map((i) => Container(
+                    const Gap(10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: profile.interests
+                          .map((i) {
+                            final emoji = _kDiscoveryInterestEmojis[i];
+                            return Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 8),
+                                  horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: modeColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(
-                                    AppDimensions.radiusRound),
-                                border:
-                                    Border.all(color: modeColor.withValues(alpha: 0.4)),
-                              ),
-                              child: Text(
-                                i,
-                                style: GoogleFonts.outfit(
-                                  fontSize: 13,
-                                  color: AppColors.white,
+                                color: AppColors.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(alpha: 0.2),
                                 ),
                               ),
-                            ))
-                        .toList(),
-                  ),
-                  const Gap(20),
-
-                  // Spotify player
+                              child: Text(
+                                emoji != null ? '$emoji $i' : i,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  color: AppColors.textPrimary.withValues(alpha: 0.8),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            );
+                          })
+                          .toList(),
+                    ),
+                    const Gap(24),
+                  ],
                   if (profile.spotifyTrackName != null)
                     _SpotifyMiniPlayer(
                       trackName: profile.spotifyTrackName!,
                       artist: profile.spotifyArtist ?? '',
                       spotifyPreviewUrl: profile.spotifyPreviewUrl,
+                      artworkUrl: profile.spotifyArtworkUrl,
                     ),
-                  const Gap(40),
                 ],
               ),
             ),
@@ -1619,8 +2243,18 @@ class _FullProfileViewState extends State<_FullProfileView> {
       ),
     );
   }
+}
 
-  Widget _buildModeBadge(String mode, Color color) {
+// ─── Detail Mode Badge ──────────────────────────────────────
+
+class _DetailModeBadge extends StatelessWidget {
+  final String mode;
+  final Color color;
+
+  const _DetailModeBadge({required this.mode, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
     String label;
     switch (mode) {
       case 'friends':
@@ -1633,72 +2267,25 @@ class _FullProfileViewState extends State<_FullProfileView> {
         label = AppStrings.onboardingModeRelationship;
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(AppDimensions.radiusRound),
-        border: Border.all(color: color, width: 1.5),
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8),
-        ],
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Text(
         label,
         style: GoogleFonts.outfit(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
           color: color,
+          letterSpacing: 0.3,
         ),
       ),
     );
   }
 }
 
-// ─── Particle Painter ───────────────────────────────────────
+// ─── Enums ──────────────────────────────────────────────────
 
 enum SwipeDirection { left, right, up }
-
-enum ParticleType { heart, star }
-
-class ParticlePainter extends CustomPainter {
-  final double progress;
-  final ParticleType type;
-  final Offset center;
-  final Random _random = Random(42);
-
-  ParticlePainter({
-    required this.progress,
-    required this.type,
-    required this.center,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final particleCount = 20;
-    final paint = Paint()..style = PaintingStyle.fill;
-
-    for (int i = 0; i < particleCount; i++) {
-      final angle = (i / particleCount) * 2 * pi + _random.nextDouble() * 0.5;
-      final distance = progress * (100 + _random.nextDouble() * 150);
-      final x = center.dx + cos(angle) * distance;
-      final y = center.dy + sin(angle) * distance - progress * 50;
-      final opacity = (1.0 - progress).clamp(0.0, 1.0);
-      final particleSize = (8 + _random.nextDouble() * 8) * (1 - progress * 0.5);
-
-      if (type == ParticleType.heart) {
-        paint.color =
-            AppColors.primary.withValues(alpha: opacity);
-      } else {
-        paint.color =
-            AppColors.warning.withValues(alpha: opacity);
-      }
-
-      canvas.drawCircle(Offset(x, y), particleSize, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant ParticlePainter oldDelegate) {
-    return oldDelegate.progress != progress;
-  }
-}

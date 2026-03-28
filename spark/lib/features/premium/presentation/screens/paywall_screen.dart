@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
-import 'package:spark/core/constants/app_dimensions.dart';
-import 'package:spark/core/constants/app_strings.dart';
-import 'package:spark/shared/widgets/neon_button.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -16,7 +14,112 @@ class PaywallScreen extends StatefulWidget {
 }
 
 class _PaywallScreenState extends State<PaywallScreen> {
-  int _selectedPlan = 0; // 0 = monthly, 1 = yearly
+  int _selectedPlan = 0; // 0 = weekly, 1 = monthly
+  bool _isLoading = false;
+  bool _isPurchasing = false;
+  Offerings? _offerings;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOfferings();
+  }
+
+  Future<void> _loadOfferings() async {
+    setState(() => _isLoading = true);
+    try {
+      final offerings = await Purchases.getOfferings();
+      if (mounted) {
+        setState(() {
+          _offerings = offerings;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _purchase() async {
+    if (_isPurchasing) return;
+    setState(() => _isPurchasing = true);
+
+    try {
+      final offering = _offerings?.current;
+      if (offering == null) {
+        _showSnackBar('Brak dostepnych ofert. Sprobuj ponownie pozniej.');
+        setState(() => _isPurchasing = false);
+        return;
+      }
+
+      final packages = offering.availablePackages;
+      Package? selectedPackage;
+
+      if (_selectedPlan == 0) {
+        // Weekly
+        selectedPackage = packages.firstWhere(
+          (p) => p.packageType == PackageType.weekly,
+          orElse: () => packages.first,
+        );
+      } else {
+        // Monthly
+        selectedPackage = packages.firstWhere(
+          (p) => p.packageType == PackageType.monthly,
+          orElse: () => packages.last,
+        );
+      }
+
+      final result = await Purchases.purchasePackage(selectedPackage);
+      final isPremium = result.customerInfo.entitlements.all['premium']?.isActive ?? false;
+
+      if (isPremium && mounted) {
+        _showSnackBar('Spark Premium aktywowany!');
+        Navigator.pop(context, true);
+      }
+    } on PurchasesErrorCode catch (e) {
+      if (e != PurchasesErrorCode.purchaseCancelledError) {
+        _showSnackBar('Blad zakupu: $e');
+      }
+    } catch (e) {
+      _showSnackBar('Blad: $e');
+    } finally {
+      if (mounted) setState(() => _isPurchasing = false);
+    }
+  }
+
+  Future<void> _restorePurchases() async {
+    setState(() => _isLoading = true);
+    try {
+      final customerInfo = await Purchases.restorePurchases();
+      final isPremium = customerInfo.entitlements.all['premium']?.isActive ?? false;
+      if (isPremium && mounted) {
+        _showSnackBar('Zakupy przywrocone!');
+        Navigator.pop(context, true);
+      } else {
+        _showSnackBar('Nie znaleziono aktywnych subskrypcji.');
+      }
+    } catch (e) {
+      _showSnackBar('Blad przywracania: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.textPrimary,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,111 +127,107 @@ class _PaywallScreenState extends State<PaywallScreen> {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.screenPadding),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
               const Gap(8),
-              // Close button
               Align(
                 alignment: Alignment.topRight,
                 child: IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded,
-                      color: AppColors.textSecondary),
+                  icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
                 ),
               ),
               const Gap(8),
 
-              // Animated crown
-              _AnimatedCrown(),
+              // Crown icon
+              const _CrownIcon(),
               const Gap(16),
 
               // Title
               Text(
-                AppStrings.paywallTitle,
+                'Spark Premium',
                 style: GoogleFonts.outfit(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
                   foreground: Paint()
                     ..shader = const LinearGradient(
                       colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                    ).createShader(
-                        const Rect.fromLTWH(0, 0, 250, 40)),
-                  shadows: [
-                    const Shadow(
-                      color: Color(0x88FFD700),
-                      blurRadius: 20,
-                    ),
-                    const Shadow(
-                      color: Color(0x44FFA500),
-                      blurRadius: 40,
-                    ),
-                  ],
+                    ).createShader(const Rect.fromLTWH(0, 0, 250, 40)),
                 ),
-              )
-                  .animate()
-                  .fadeIn(duration: 600.ms)
-                  .slideY(begin: -0.2),
-
+              ),
               const Gap(4),
               Text(
-                AppStrings.paywallSubtitle,
+                'Odblokuj wszystkie funkcje',
                 style: GoogleFonts.outfit(
                   fontSize: 15,
                   color: AppColors.textSecondary,
                 ),
-              ).animate().fadeIn(delay: 200.ms, duration: 500.ms),
-
+              ),
               const Gap(32),
 
               // Feature comparison
-              _FeatureComparison(),
+              const _FeatureComparison(),
               const Gap(32),
 
               // Price cards
               _PriceCardSection(
                 selectedPlan: _selectedPlan,
                 onPlanSelected: (i) => setState(() => _selectedPlan = i),
+                offerings: _offerings,
               ),
               const Gap(32),
 
               // Subscribe button
               SizedBox(
                 width: double.infinity,
-                child: NeonButton(
-                  label: 'Rozpocznij',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            'Przekierowanie do płatności...'),
-                        backgroundColor: AppColors.surfaceLight,
-                      ),
-                    );
-                  },
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isPurchasing ? null : _purchase,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
                   ),
-                  glowColor: const Color(0xFFFFD700),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Container(
+                      alignment: Alignment.center,
+                      child: _isPurchasing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              'Rozpocznij',
+                              style: GoogleFonts.outfit(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                    ),
+                  ),
                 ),
-              ).animate().fadeIn(delay: 600.ms, duration: 500.ms).slideY(begin: 0.2),
-
+              ),
               const Gap(16),
 
               // Restore purchases
               TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content:
-                          Text('Przywracanie zakupów...'),
-                      backgroundColor: AppColors.surfaceLight,
-                    ),
-                  );
-                },
+                onPressed: _isLoading ? null : _restorePurchases,
                 child: Text(
-                  AppStrings.paywallRestore,
+                  'Przywroc zakupy',
                   style: GoogleFonts.outfit(
                     fontSize: 14,
                     color: AppColors.textSecondary,
@@ -137,7 +236,20 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   ),
                 ),
               ),
-              const Gap(24),
+              const Gap(16),
+
+              // Support email
+              GestureDetector(
+                onTap: () => launchUrl(Uri.parse('mailto:sparksupport@gmail.com')),
+                child: Text(
+                  'Pomoc: sparksupport@gmail.com',
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    color: AppColors.textHint,
+                  ),
+                ),
+              ),
+              const Gap(12),
 
               // Terms
               Row(
@@ -146,7 +258,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   TextButton(
                     onPressed: () {},
                     child: Text(
-                      AppStrings.settingsTerms,
+                      'Regulamin',
                       style: GoogleFonts.outfit(
                         fontSize: 11,
                         color: AppColors.textHint,
@@ -154,12 +266,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     ),
                   ),
                   Text('  |  ',
-                      style: TextStyle(
-                          color: AppColors.textHint, fontSize: 11)),
+                      style: TextStyle(color: AppColors.textHint, fontSize: 11)),
                   TextButton(
                     onPressed: () {},
                     child: Text(
-                      AppStrings.settingsPrivacyPolicy,
+                      'Polityka prywatnosci',
                       style: GoogleFonts.outfit(
                         fontSize: 11,
                         color: AppColors.textHint,
@@ -177,17 +288,19 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 }
 
-// ─── Animated Crown ─────────────────────────────────────────
+// ─── Crown Icon ─────────────────────────────────────────────
 
-class _AnimatedCrown extends StatelessWidget {
+class _CrownIcon extends StatelessWidget {
+  const _CrownIcon();
+
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 80,
       height: 80,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const RadialGradient(
+        gradient: RadialGradient(
           colors: [
             Color(0x33FFD700),
             Colors.transparent,
@@ -199,27 +312,20 @@ class _AnimatedCrown extends StatelessWidget {
         size: 56,
         color: Color(0xFFFFD700),
       ),
-    )
-        .animate(
-          onPlay: (c) => c.repeat(reverse: true),
-        )
-        .moveY(begin: 0, end: -8, duration: 1500.ms, curve: Curves.easeInOut)
-        .then()
-        .shimmer(
-          duration: 2000.ms,
-          color: const Color(0x44FFD700),
-        );
+    );
   }
 }
 
 // ─── Feature Comparison ─────────────────────────────────────
 
 class _FeatureComparison extends StatelessWidget {
+  const _FeatureComparison();
+
   @override
   Widget build(BuildContext context) {
-    final features = [
-      ('Nieograniczone polubienia', false, true),
-      ('Kto Cię polubił', false, true),
+    const features = [
+      ('Nieograniczone Smash', false, true),
+      ('Kto Cie polubil', false, true),
       ('Super Like 10/mc', false, true),
       ('Cofnij swipe', false, true),
       ('Zaawansowane filtry', false, true),
@@ -231,12 +337,11 @@ class _FeatureComparison extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.divider),
       ),
       child: Column(
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: const BoxDecoration(
@@ -289,17 +394,14 @@ class _FeatureComparison extends StatelessWidget {
               ],
             ),
           ),
-          // Rows
           ...features.asMap().entries.map((entry) {
             final i = entry.key;
             final f = entry.value;
             return Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 border: i < features.length - 1
-                    ? const Border(
-                        bottom: BorderSide(color: AppColors.divider))
+                    ? const Border(bottom: BorderSide(color: AppColors.divider))
                     : null,
               ),
               child: Row(
@@ -327,18 +429,14 @@ class _FeatureComparison extends StatelessWidget {
                     child: Center(
                       child: Icon(
                         f.$3 ? Icons.check_rounded : Icons.close_rounded,
-                        color: f.$3
-                            ? const Color(0xFFFFD700)
-                            : AppColors.error,
+                        color: f.$3 ? const Color(0xFFFFD700) : AppColors.error,
                         size: 20,
                       ),
                     ),
                   ),
                 ],
               ),
-            )
-                .animate()
-                .fadeIn(delay: (200 + i * 60).ms, duration: 400.ms);
+            );
           }),
         ],
       ),
@@ -351,40 +449,55 @@ class _FeatureComparison extends StatelessWidget {
 class _PriceCardSection extends StatelessWidget {
   final int selectedPlan;
   final ValueChanged<int> onPlanSelected;
+  final Offerings? offerings;
 
   const _PriceCardSection({
     required this.selectedPlan,
     required this.onPlanSelected,
+    this.offerings,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Try to get prices from RevenueCat, fall back to defaults
+    String weeklyPrice = '29 PLN';
+    String monthlyPrice = '49 PLN';
+
+    final current = offerings?.current;
+    if (current != null) {
+      for (final pkg in current.availablePackages) {
+        if (pkg.packageType == PackageType.weekly) {
+          weeklyPrice = pkg.storeProduct.priceString;
+        } else if (pkg.packageType == PackageType.monthly) {
+          monthlyPrice = pkg.storeProduct.priceString;
+        }
+      }
+    }
+
     return Row(
       children: [
-        // Monthly
         Expanded(
           child: _PriceCard(
-            title: AppStrings.paywallMonthly,
-            price: '49,99 zł',
-            period: '/miesiąc',
+            title: 'Tygodniowo',
+            price: weeklyPrice,
+            period: '/tydzien',
             isSelected: selectedPlan == 0,
             onTap: () => onPlanSelected(0),
           ),
         ),
         const Gap(12),
-        // Yearly
         Expanded(
           child: _PriceCard(
-            title: AppStrings.paywallYearly,
-            price: '29,99 zł',
-            period: '/miesiąc',
-            badge: 'Oszczędzasz 40%',
+            title: 'Miesiecznie',
+            price: monthlyPrice,
+            period: '/miesiac',
+            badge: 'Najlepsza wartosc',
             isSelected: selectedPlan == 1,
             onTap: () => onPlanSelected(1),
           ),
         ),
       ],
-    ).animate().fadeIn(delay: 500.ms, duration: 500.ms).slideY(begin: 0.15);
+    );
   }
 }
 
@@ -413,28 +526,16 @@ class _PriceCard extends StatelessWidget {
         duration: const Duration(milliseconds: 250),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-          gradient: isSelected
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF1A0A2E),
-                    Color(0xFF0D0520),
-                  ],
-                )
-              : null,
-          color: isSelected ? null : AppColors.card,
+          borderRadius: BorderRadius.circular(20),
+          color: isSelected ? const Color(0xFFFFF8E1) : AppColors.card,
           border: Border.all(
-            color: isSelected
-                ? const Color(0xFFFFD700)
-                : AppColors.divider,
+            color: isSelected ? const Color(0xFFFFD700) : AppColors.divider,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
               ? [
-                  const BoxShadow(
-                    color: Color(0x33FFD700),
+                  BoxShadow(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.15),
                     blurRadius: 16,
                     spreadRadius: 1,
                   ),
@@ -445,21 +546,19 @@ class _PriceCard extends StatelessWidget {
           children: [
             if (badge != null) ...[
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
                   ),
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.radiusRound),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   badge!,
                   style: GoogleFonts.outfit(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.black,
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
@@ -470,9 +569,7 @@ class _PriceCard extends StatelessWidget {
               style: GoogleFonts.outfit(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: isSelected
-                    ? AppColors.white
-                    : AppColors.textSecondary,
+                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
               ),
             ),
             const Gap(8),
@@ -481,9 +578,7 @@ class _PriceCard extends StatelessWidget {
               style: GoogleFonts.outfit(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
-                color: isSelected
-                    ? const Color(0xFFFFD700)
-                    : AppColors.textPrimary,
+                color: isSelected ? const Color(0xFFE6A800) : AppColors.textPrimary,
               ),
             ),
             Text(

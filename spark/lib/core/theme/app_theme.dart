@@ -8,13 +8,13 @@ import '../constants/app_dimensions.dart';
 abstract final class AppTheme {
   // ─────────────────────── THEME DATA ───────────────────────
   static ThemeData get darkTheme {
-    final baseTextTheme = GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme);
+    final baseTextTheme = GoogleFonts.outfitTextTheme(ThemeData.light().textTheme);
 
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.dark(
+      colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
         onPrimary: AppColors.white,
         secondary: AppColors.neonPurple,
@@ -90,7 +90,7 @@ abstract final class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
         titleTextStyle: GoogleFonts.outfit(
           color: AppColors.textPrimary,
@@ -200,7 +200,7 @@ abstract final class AppTheme {
       // ── Chip ──
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceLight,
-        selectedColor: AppColors.primary.withValues(alpha: 0.2),
+        selectedColor: AppColors.primary.withValues(alpha: 0.15),
         disabledColor: AppColors.surfaceLight,
         labelStyle: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 13),
         secondaryLabelStyle: GoogleFonts.outfit(color: AppColors.primary, fontSize: 13),
@@ -220,7 +220,7 @@ abstract final class AppTheme {
 
       // ── Bottom Sheet ──
       bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(AppDimensions.radiusXL)),
         ),
@@ -228,7 +228,7 @@ abstract final class AppTheme {
 
       // ── Dialog ──
       dialogTheme: DialogThemeData(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
         ),
@@ -241,8 +241,8 @@ abstract final class AppTheme {
 
       // ── Snack Bar ──
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppColors.surfaceLight,
-        contentTextStyle: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 14),
+        backgroundColor: AppColors.textPrimary,
+        contentTextStyle: GoogleFonts.outfit(color: AppColors.white, fontSize: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
         ),
@@ -256,7 +256,7 @@ abstract final class AppTheme {
           return AppColors.textHint;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return AppColors.primary.withValues(alpha: 0.4);
+          if (states.contains(WidgetState.selected)) return AppColors.primary.withValues(alpha: 0.3);
           return AppColors.divider;
         }),
       ),
@@ -269,9 +269,9 @@ abstract final class AppTheme {
     );
   }
 
-  // ─────────────── NEON GLOW DECORATIONS ───────────────
+  // ─────────────── SOFT GLOW DECORATIONS ───────────────
 
-  /// Neon glow box decoration for containers
+  /// Soft glow box decoration for containers
   static BoxDecoration neonGlowDecoration({
     Color color = AppColors.neonPink,
     double blurRadius = AppDimensions.neonBlurMedium,
@@ -281,17 +281,17 @@ abstract final class AppTheme {
     Color? backgroundColor,
   }) {
     return BoxDecoration(
-      color: backgroundColor ?? AppColors.surface,
+      color: backgroundColor ?? AppColors.white,
       borderRadius: BorderRadius.circular(borderRadius),
-      border: Border.all(color: color, width: borderWidth),
+      border: Border.all(color: color.withValues(alpha: 0.4), width: borderWidth),
       boxShadow: [
         BoxShadow(
-          color: color.withValues(alpha: 0.4),
+          color: color.withValues(alpha: 0.15),
           blurRadius: blurRadius,
           spreadRadius: spreadRadius,
         ),
         BoxShadow(
-          color: color.withValues(alpha: 0.15),
+          color: color.withValues(alpha: 0.06),
           blurRadius: blurRadius * 2,
           spreadRadius: spreadRadius * 2,
         ),
@@ -299,7 +299,7 @@ abstract final class AppTheme {
     );
   }
 
-  /// Subtle neon glow (for cards, containers)
+  /// Subtle soft glow (for cards, containers)
   static BoxDecoration subtleNeonGlow({
     Color color = AppColors.neonPink,
     double borderRadius = AppDimensions.radiusL,
@@ -307,10 +307,10 @@ abstract final class AppTheme {
     return BoxDecoration(
       color: AppColors.card,
       borderRadius: BorderRadius.circular(borderRadius),
-      border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+      border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
       boxShadow: [
         BoxShadow(
-          color: color.withValues(alpha: 0.15),
+          color: color.withValues(alpha: 0.08),
           blurRadius: AppDimensions.neonBlurSmall,
           spreadRadius: 0,
         ),
@@ -318,14 +318,14 @@ abstract final class AppTheme {
     );
   }
 
-  /// Neon text shadow
+  /// Soft text shadow
   static List<Shadow> neonTextShadow({
     Color color = AppColors.neonPink,
     double blurRadius = AppDimensions.neonBlurMedium,
   }) {
     return [
-      Shadow(color: color.withValues(alpha: 0.6), blurRadius: blurRadius),
-      Shadow(color: color.withValues(alpha: 0.3), blurRadius: blurRadius * 2),
+      Shadow(color: color.withValues(alpha: 0.3), blurRadius: blurRadius),
+      Shadow(color: color.withValues(alpha: 0.1), blurRadius: blurRadius * 2),
     ];
   }
 
@@ -339,7 +339,7 @@ abstract final class AppTheme {
       borderRadius: BorderRadius.circular(borderRadius),
       boxShadow: [
         BoxShadow(
-          color: AppColors.primary.withValues(alpha: 0.4),
+          color: AppColors.primary.withValues(alpha: 0.25),
           blurRadius: AppDimensions.neonBlurMedium,
           spreadRadius: AppDimensions.neonSpreadSmall,
           offset: const Offset(0, 4),

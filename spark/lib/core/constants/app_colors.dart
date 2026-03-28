@@ -1,90 +1,90 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  // ── Primary ──
-  static const Color primary = Color(0xFFFF1493);
-  static const Color primaryDark = Color(0xFFCC1076);
-  static const Color primaryLight = Color(0xFFFF5CB8);
+  // ── Primary (soft cherry blossom pink) ──
+  static const Color primary = Color(0xFFFF6B9D);
+  static const Color primaryDark = Color(0xFFE8507E);
+  static const Color primaryLight = Color(0xFFFFB3CC);
 
-  // ── Background / Surface ──
-  static const Color background = Color(0xFF000000);
-  static const Color surface = Color(0xFF0D0D0D);
-  static const Color surfaceLight = Color(0xFF1A1A1A);
-  static const Color card = Color(0xFF141414);
-  static const Color cardLight = Color(0xFF1E1E1E);
+  // ── Background / Surface (light cream / blush) ──
+  static const Color background = Color(0xFFFFF5F7);
+  static const Color surface = Color(0xFFFFF0F3);
+  static const Color surfaceLight = Color(0xFFFFE8ED);
+  static const Color card = Color(0xFFFFF8FA);
+  static const Color cardLight = Color(0xFFFFF0F5);
 
   // ── Text ──
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFB0B0B0);
-  static const Color textHint = Color(0xFF666666);
-  static const Color textDisabled = Color(0xFF444444);
+  static const Color textPrimary = Color(0xFF1A1A2E);
+  static const Color textSecondary = Color(0xFF6B6B80);
+  static const Color textHint = Color(0xFFA0A0B0);
+  static const Color textDisabled = Color(0xFFC8C8D0);
 
   // ── Mode Colors ──
-  static const Color modeRelationship = Color(0xFFFF1493); // pink
-  static const Color modeFriends = Color(0xFF39FF14); // neon green
-  static const Color modeFWB = Color(0xFFFF6D00); // orange
+  static const Color modeRelationship = Color(0xFFFF6B9D);
+  static const Color modeFriends = Color(0xFF5CD68A);
+  static const Color modeFWB = Color(0xFFFF9F43);
 
-  // ── Neon Glow ──
-  static const Color neonPink = Color(0xFFFF1493);
-  static const Color neonPinkGlow = Color(0x66FF1493);
-  static const Color neonGreen = Color(0xFF39FF14);
-  static const Color neonGreenGlow = Color(0x6639FF14);
-  static const Color neonOrange = Color(0xFFFF6D00);
-  static const Color neonOrangeGlow = Color(0x66FF6D00);
-  static const Color neonBlue = Color(0xFF00BFFF);
-  static const Color neonBlueGlow = Color(0x6600BFFF);
-  static const Color neonPurple = Color(0xFFBF00FF);
-  static const Color neonPurpleGlow = Color(0x66BF00FF);
+  // ── Accent Glow (soft) ──
+  static const Color neonPink = Color(0xFFFF6B9D);
+  static const Color neonPinkGlow = Color(0x40FF6B9D);
+  static const Color neonGreen = Color(0xFF5CD68A);
+  static const Color neonGreenGlow = Color(0x405CD68A);
+  static const Color neonOrange = Color(0xFFFF9F43);
+  static const Color neonOrangeGlow = Color(0x40FF9F43);
+  static const Color neonBlue = Color(0xFF74B9FF);
+  static const Color neonBlueGlow = Color(0x4074B9FF);
+  static const Color neonPurple = Color(0xFFA29BFE);
+  static const Color neonPurpleGlow = Color(0x40A29BFE);
 
   // ── Status ──
-  static const Color success = Color(0xFF39FF14);
-  static const Color error = Color(0xFFFF3B30);
-  static const Color warning = Color(0xFFFFD600);
-  static const Color info = Color(0xFF00BFFF);
+  static const Color success = Color(0xFF5CD68A);
+  static const Color error = Color(0xFFFF6B6B);
+  static const Color warning = Color(0xFFFFD93D);
+  static const Color info = Color(0xFF74B9FF);
 
   // ── Misc ──
-  static const Color divider = Color(0xFF2A2A2A);
-  static const Color shimmerBase = Color(0xFF1A1A1A);
-  static const Color shimmerHighlight = Color(0xFF2A2A2A);
-  static const Color overlay = Color(0xCC000000);
-  static const Color scrim = Color(0x99000000);
+  static const Color divider = Color(0xFFF0E0E8);
+  static const Color shimmerBase = Color(0xFFFFF0F5);
+  static const Color shimmerHighlight = Color(0xFFFFE0EB);
+  static const Color overlay = Color(0xCCFFFFFF);
+  static const Color scrim = Color(0x99FFFFFF);
   static const Color white = Color(0xFFFFFFFF);
   static const Color black = Color(0xFF000000);
   static const Color transparent = Color(0x00000000);
 
   // ── Gradients ──
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFFFF1493), Color(0xFFFF6D00)],
+    colors: [Color(0xFFFF6B9D), Color(0xFFFF9F43)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient neonPinkGradient = LinearGradient(
-    colors: [Color(0xFFFF1493), Color(0xFFBF00FF)],
+    colors: [Color(0xFFFF6B9D), Color(0xFFA29BFE)],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
 
   static const LinearGradient neonGreenGradient = LinearGradient(
-    colors: [Color(0xFF39FF14), Color(0xFF00BFFF)],
+    colors: [Color(0xFF5CD68A), Color(0xFF74B9FF)],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
 
   static const LinearGradient neonOrangeGradient = LinearGradient(
-    colors: [Color(0xFFFF6D00), Color(0xFFFF1493)],
+    colors: [Color(0xFFFF9F43), Color(0xFFFF6B9D)],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
 
   static const LinearGradient darkGradient = LinearGradient(
-    colors: [Color(0xFF0D0D0D), Color(0xFF000000)],
+    colors: [Color(0xFFFFF8FA), Color(0xFFFFF0F5)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
 
   static const LinearGradient cardGradient = LinearGradient(
-    colors: [Color(0xFF1A1A1A), Color(0xFF0D0D0D)],
+    colors: [Color(0xFFFFFFFF), Color(0xFFFFF5F7)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
