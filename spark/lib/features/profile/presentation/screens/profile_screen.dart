@@ -225,6 +225,8 @@ class _HeroCardState extends ConsumerState<_HeroCard> {
                         ref.read(_currentPhotoProvider.notifier).state = safeIdx + 1;
                       }
                     },
+                    onDoubleTap: () => _openFullscreen(context, photos, safeIdx),
+                    onLongPress: () => _openFullscreen(context, photos, safeIdx),
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: CachedNetworkImage(
@@ -400,6 +402,113 @@ class _HeroCardState extends ConsumerState<_HeroCard> {
               color: AppColors.neonPink.withValues(alpha: 0.15)),
         ),
       );
+
+  void _openFullscreen(BuildContext context, List<String> photos, int initial) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (_, __, ___) => _FullscreenPhotoViewer(
+          photos: photos,
+          initialIndex: initial,
+        ),
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+  }
+}
+
+// ── Fullscreen Photo Viewer ──
+
+class _FullscreenPhotoViewer extends StatefulWidget {
+  final List<String> photos;
+  final int initialIndex;
+  const _FullscreenPhotoViewer({required this.photos, required this.initialIndex});
+
+  @override
+  State<_FullscreenPhotoViewer> createState() => _FullscreenPhotoViewerState();
+}
+
+class _FullscreenPhotoViewerState extends State<_FullscreenPhotoViewer> {
+  late int _index;
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _pageController = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(context),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              itemCount: widget.photos.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (_, i) => Center(
+                child: InteractiveViewer(
+                  child: CachedNetworkImage(
+                    imageUrl: widget.photos[i],
+                    fit: BoxFit.contain,
+                    placeholder: (_, __) => const CircularProgressIndicator(color: Colors.white),
+                    errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white, size: 60),
+                  ),
+                ),
+              ),
+            ),
+            // Close button
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+            // Dots indicator
+            if (widget.photos.length > 1)
+              Positioned(
+                bottom: MediaQuery.of(context).padding.bottom + 24,
+                left: 0, right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(widget.photos.length, (i) => Container(
+                    width: i == _index ? 20 : 6,
+                    height: 6,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: i == _index ? Colors.white : Colors.white.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  )),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Top Row (modes + header) ──
@@ -876,7 +985,6 @@ class _SocialCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -892,71 +1000,89 @@ class _SocialCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'SOCIAL MEDIA',
-            style: GoogleFonts.outfit(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textHint,
-              letterSpacing: 1.2,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+            child: Text(
+              'SOCIAL MEDIA',
+              style: GoogleFonts.outfit(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textHint,
+                letterSpacing: 1.2,
+              ),
             ),
           ),
-          const Gap(14),
-          Row(
-            children: socials.map((s) {
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: s.$5,
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+          ...socials.asMap().entries.map((entry) {
+            final i = entry.key;
+            final s = entry.value;
+            final isLast = i == socials.length - 1;
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: s.$4.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            s.$1,
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: s.$4 == const Color(0xFFFFFC00)
+                                  ? const Color(0xFF997A00)
+                                  : s.$4,
+                            ),
+                          ),
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: s.$4.withValues(alpha: 0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
+                      const Gap(12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              s.$2,
+                              style: GoogleFonts.outfit(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              s.$3,
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          s.$1,
-                          style: GoogleFonts.outfit(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: s.$4 == const Color(0xFFFFFC00)
-                                ? Colors.black
-                                : Colors.white,
-                          ),
-                        ),
-                        const Gap(4),
-                        Text(
-                          s.$3,
-                          style: GoogleFonts.outfit(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: (s.$4 == const Color(0xFFFFFC00)
-                                    ? Colors.black
-                                    : Colors.white)
-                                .withValues(alpha: 0.85),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: AppColors.textHint,
+                      ),
+                    ],
                   ),
                 ),
-              );
-            }).toList(),
-          ),
+                if (!isLast)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Divider(height: 16, color: AppColors.divider),
+                  )
+                else
+                  const Gap(14),
+              ],
+            );
+          }),
         ],
       ),
     ).animate().fadeIn(delay: 350.ms, duration: 300.ms);
@@ -1009,6 +1135,14 @@ class _GradientStrip extends StatelessWidget {
 }
 
 // ── Preview Card Button ──
+
+String _modeToPolish(String mode) {
+  switch (mode) {
+    case 'friends': return 'Znajomi';
+    case 'fwb': return 'FWB';
+    default: return 'Związek';
+  }
+}
 
 class _PreviewCardButton extends StatelessWidget {
   const _PreviewCardButton({required this.profile, required this.gradStart, required this.gradEnd});
@@ -1180,7 +1314,9 @@ class _PreviewCardButton extends StatelessWidget {
                                             borderRadius: BorderRadius.circular(20),
                                           ),
                                           child: Text(
-                                            profile.modes.isNotEmpty ? profile.modes.first : '',
+                                            profile.modes.isNotEmpty
+                                                ? _modeToPolish(profile.modes.first)
+                                                : 'Związek',
                                             style: GoogleFonts.outfit(
                                               fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
                                           ),
@@ -1194,18 +1330,40 @@ class _PreviewCardButton extends StatelessWidget {
                                     ],
                                     if (profile.interests.isNotEmpty) ...[
                                       const Gap(8),
+                                      Text(
+                                        'Fajnie jakbyś lubił/a:',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                      const Gap(5),
                                       Wrap(
                                         spacing: 6, runSpacing: 4,
-                                        children: profile.interests.take(4).map((i) {
+                                        children: profile.interests.take(3).map((i) {
+                                          const emojis = {
+                                            'Muzyka': '🎵', 'Film': '🎬', 'Ksiazki': '📚',
+                                            'Gry': '🎮', 'Sport': '⚽', 'Gotowanie': '🍳',
+                                            'Podroze': '✈️', 'Natura': '🌿', 'Sztuka': '🎨',
+                                            'Fitness': '💪', 'Taniec': '💃', 'Zwierzeta': '🐾',
+                                          };
+                                          final emoji = emojis[i];
                                           return Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                             decoration: BoxDecoration(
-                                              color: gradStart.withValues(alpha: 0.12),
+                                              gradient: LinearGradient(colors: [
+                                                gradStart.withValues(alpha: 0.15),
+                                                gradEnd.withValues(alpha: 0.10),
+                                              ]),
                                               borderRadius: BorderRadius.circular(14),
+                                              border: Border.all(color: gradStart.withValues(alpha: 0.3), width: 0.5),
                                             ),
-                                            child: Text(i,
-                                                style: GoogleFonts.outfit(
-                                                  fontSize: 11, fontWeight: FontWeight.w600, color: gradStart)),
+                                            child: Text(
+                                              emoji != null ? '$emoji $i' : i,
+                                              style: GoogleFonts.outfit(
+                                                fontSize: 11, fontWeight: FontWeight.w600, color: gradStart),
+                                            ),
                                           );
                                         }).toList(),
                                       ),

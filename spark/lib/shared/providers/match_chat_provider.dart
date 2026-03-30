@@ -149,12 +149,17 @@ final matchesWithProfileProvider =
 
       String photoUrl = '';
       try {
-        final files = await client.storage
-            .from('photos')
-            .list(path: 'profiles/$otherUserId');
-        if (files.isNotEmpty) {
-          photoUrl =
-              '${_photosBaseUrl}profiles/$otherUserId/${files.first.name}';
+        final photoRows = await client
+            .from('user_photos')
+            .select('storage_path')
+            .eq('user_id', otherUserId)
+            .order('position', ascending: true)
+            .limit(1);
+        if (photoRows.isNotEmpty) {
+          final path = photoRows[0]['storage_path'] as String;
+          photoUrl = path.startsWith('http')
+              ? path
+              : '${_photosBaseUrl}$path';
         }
       } catch (_) {}
 

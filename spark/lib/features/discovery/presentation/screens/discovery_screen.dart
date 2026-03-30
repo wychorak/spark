@@ -238,10 +238,10 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
               .select('storage_path, position')
               .eq('user_id', profileId)
               .order('position', ascending: true);
-          photoUrls = (photosRes as List<dynamic>)
-              .map((p) => '$_supabaseStorageBase${p['storage_path']}')
-              .toList()
-              .cast<String>();
+          photoUrls = (photosRes as List<dynamic>).map((p) {
+            final path = p['storage_path'] as String;
+            return path.startsWith('http') ? path : '$_supabaseStorageBase$path';
+          }).toList().cast<String>();
         } catch (_) {}
 
         List<String> interests = [];
@@ -823,6 +823,28 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
                     gradEnd: gradEnd,
                   ),
                 ),
+
+                // ── Report/Block button ──────────────────────
+                Positioned(
+                  top: 14,
+                  right: 14,
+                  child: GestureDetector(
+                    onTap: () => _showReportBlockSheet(context, profile),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.more_horiz_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1315,6 +1337,143 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
         },
       ),
     );
+  }
+
+  void _showReportBlockSheet(BuildContext context, DiscoveryProfile profile) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Gap(12),
+              Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Gap(16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  profile.name,
+                  style: GoogleFonts.outfit(
+                    fontSize: 16, fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A1A2E),
+                  ),
+                ),
+              ),
+              const Gap(8),
+              ListTile(
+                leading: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.flag_rounded, color: Colors.orange, size: 20),
+                ),
+                title: Text('Zgłoś profil',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 15)),
+                subtitle: Text('Spam, fake, nieodpowiednie treści',
+                    style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _reportUser(profile.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Zgłoszono ${profile.name}',
+                            style: GoogleFonts.outfit()),
+                        backgroundColor: Colors.orange,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.block_rounded, color: Colors.red, size: 20),
+                ),
+                title: Text('Zablokuj',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 15)),
+                subtitle: Text('Nie będziesz się więcej widzieć',
+                    style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _blockUser(profile.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Zablokowano ${profile.name}',
+                            style: GoogleFonts.outfit()),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                    // Skip this card
+                    _triggerSwipe(SwipeDirection.left);
+                  }
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close_rounded, color: Colors.grey, size: 20),
+                ),
+                title: Text('Anuluj',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 15)),
+                onTap: () => Navigator.pop(context),
+              ),
+              const Gap(8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reportUser(String userId) async {
+    try {
+      final client = Supabase.instance.client;
+      final me = client.auth.currentUser;
+      if (me == null) return;
+      await client.from('reports').insert({
+        'reporter_id': me.id,
+        'reported_id': userId,
+        'reason': 'inappropriate',
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _blockUser(String userId) async {
+    try {
+      final client = Supabase.instance.client;
+      final me = client.auth.currentUser;
+      if (me == null) return;
+      await client.from('blocks').insert({
+        'blocker_id': me.id,
+        'blocked_id': userId,
+      });
+    } catch (_) {}
   }
 }
 

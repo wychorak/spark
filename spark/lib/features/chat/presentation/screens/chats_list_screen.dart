@@ -20,6 +20,17 @@ Color _modeColor(String mode) {
   }
 }
 
+String _modeLabel(String mode) {
+  switch (mode) {
+    case 'friends':
+      return 'Znajomi';
+    case 'fwb':
+      return 'FWB';
+    default:
+      return 'Związek';
+  }
+}
+
 String _formatTime(DateTime dt) {
   final now = DateTime.now();
   final diff = now.difference(dt);
@@ -322,6 +333,22 @@ class _ConvTile extends StatelessWidget {
                           fontWeight:
                               hasUnread ? FontWeight.w700 : FontWeight.w500,
                           color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const Gap(6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _modeColor(mode).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _modeLabel(mode),
+                          style: GoogleFonts.outfit(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: _modeColor(mode),
+                          ),
                         ),
                       ),
                       const Spacer(),
