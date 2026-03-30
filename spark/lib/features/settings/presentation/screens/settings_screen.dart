@@ -6,6 +6,7 @@ import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_strings.dart';
@@ -311,13 +312,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _ActionTile(
                   icon: Icons.description_outlined,
                   title: AppStrings.settingsTerms,
-                  onTap: () {},
+                  onTap: () => launchUrl(
+                    Uri.parse('https://wychorak.github.io/spark/terms.html'),
+                    mode: LaunchMode.externalApplication,
+                  ),
                 ),
                 const _SoftDivider(),
                 _ActionTile(
                   icon: Icons.privacy_tip_outlined,
                   title: AppStrings.settingsPrivacyPolicy,
-                  onTap: () {},
+                  onTap: () => launchUrl(
+                    Uri.parse('https://wychorak.github.io/spark/privacy-policy.html'),
+                    mode: LaunchMode.externalApplication,
+                  ),
                 ),
               ],
             ),

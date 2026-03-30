@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spark — Znajdź swoją iskrę</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #FFF5F7;
+      color: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .hero {
+      background: linear-gradient(160deg, #FF6B9D 0%, #FF8FAB 50%, #FFB3C6 100%);
+      padding: 80px 24px 64px;
+      text-align: center;
+      flex: 1;
+    }
+    .logo {
+      font-size: 52px;
+      font-weight: 900;
+      color: white;
+      letter-spacing: -2px;
+      text-shadow: 0 4px 24px rgba(255,107,157,0.4);
+    }
+    .tagline {
+      font-size: 20px;
+      color: rgba(255,255,255,0.9);
+      margin-top: 12px;
+      font-weight: 400;
+    }
+    .badges {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 36px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      background: white;
+      color: #FF6B9D;
+      padding: 10px 20px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+    .links-section {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+      text-align: center;
+    }
+    .links-section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 24px;
+    }
+    .link-card {
+      display: block;
+      background: white;
+      border: 1px solid #FFE4EE;
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 14px;
+      text-decoration: none;
+      color: #1a1a2e;
+      box-shadow: 0 2px 12px rgba(255,107,157,0.08);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .link-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255,107,157,0.15);
+    }
+    .link-card .icon { font-size: 24px; margin-bottom: 6px; }
+    .link-card .title { font-size: 16px; font-weight: 700; color: #FF6B9D; }
+    .link-card .desc { font-size: 13px; color: #888; margin-top: 4px; }
+    .footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 13px;
+      color: #bbb;
+      border-top: 1px solid #FFE4EE;
+    }
+    .footer a { color: #FF6B9D; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="logo">✦ Spark</div>
+  <div class="tagline">Znajdź swoją iskrę ✨</div>
+  <div class="badges">
+    <span class="badge">💕 Związek</span>
+    <span class="badge">👥 Znajomi</span>
+    <span class="badge">🔥 FWB</span>
+  </div>
+</div>
+
+<div class="links-section">
+  <h2>Dokumenty prawne</h2>
+
+  <a href="privacy-policy.html" class="link-card">
+    <div class="icon">🔒</div>
+    <div class="title">Polityka Prywatności</div>
+    <div class="desc">Jak zbieramy i chronimy Twoje dane (RODO)</div>
+  </a>
+
+  <a href="terms.html" class="link-card">
+    <div class="icon">📋</div>
+    <div class="title">Regulamin</div>
+    <div class="desc">Zasady korzystania z aplikacji Spark</div>
+  </a>
+
+  <a href="mailto:sparksupportpolska@gmail.com" class="link-card">
+    <div class="icon">✉️</div>
+    <div class="title">Kontakt / Support</div>
+    <div class="desc">sparksupportpolska@gmail.com</div>
+  </a>
+</div>
+
+<div class="footer">
+  © 2026 Mikołaj Wychorski — Spark App<br>
+  <a href="privacy-policy.html">Polityka Prywatności</a> &nbsp;·&nbsp;
+  <a href="terms.html">Regulamin</a>
+</div>
+
+</body>
+</html>

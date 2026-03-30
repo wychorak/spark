@@ -240,9 +240,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
               // Support email
               GestureDetector(
-                onTap: () => launchUrl(Uri.parse('mailto:sparksupport@gmail.com')),
+                onTap: () => launchUrl(Uri.parse('mailto:sparksupportpolska@gmail.com')),
                 child: Text(
-                  'Pomoc: sparksupport@gmail.com',
+                  'Pomoc: sparksupportpolska@gmail.com',
                   style: GoogleFonts.outfit(
                     fontSize: 12,
                     color: AppColors.textHint,
@@ -256,7 +256,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () => launchUrl(
+                      Uri.parse('https://wychorak.github.io/spark/terms.html'),
+                      mode: LaunchMode.externalApplication,
+                    ),
                     child: Text(
                       'Regulamin',
                       style: GoogleFonts.outfit(
@@ -268,9 +271,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   Text('  |  ',
                       style: TextStyle(color: AppColors.textHint, fontSize: 11)),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () => launchUrl(
+                      Uri.parse('https://wychorak.github.io/spark/privacy-policy.html'),
+                      mode: LaunchMode.externalApplication,
+                    ),
                     child: Text(
-                      'Polityka prywatnosci',
+                      'Polityka prywatności',
                       style: GoogleFonts.outfit(
                         fontSize: 11,
                         color: AppColors.textHint,
