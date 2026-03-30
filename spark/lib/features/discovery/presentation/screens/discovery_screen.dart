@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
@@ -2184,7 +2185,8 @@ class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
           ),
           child: Row(
             children: [
-              if (widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty)
+              // On web, Spotify CDN blocks CORS — skip artwork load
+              if (widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty && !kIsWeb)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Image.network(

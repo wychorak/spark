@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -738,7 +739,8 @@ class _SongCard extends ConsumerWidget {
                   ),
                 ],
               ),
-              child: artworkUrl != null && artworkUrl!.isNotEmpty
+              // On web, Spotify CDN (i.scdn.co) blocks CORS — skip image load
+              child: artworkUrl != null && artworkUrl!.isNotEmpty && !kIsWeb
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.network(
