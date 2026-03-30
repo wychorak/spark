@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/notifications/notification_service.dart';
 
 import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/auth/presentation/screens/age_gate_screen.dart';
@@ -60,8 +61,9 @@ abstract final class RouteNames {
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: NotificationService.navigatorKey,
     initialLocation: RoutePaths.splash,
-    debugLogDiagnostics: true,
+    debugLogDiagnostics: false,
     routes: [
       GoRoute(
         path: RoutePaths.splash,

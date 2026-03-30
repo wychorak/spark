@@ -4,6 +4,16 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>Spark chce wysyłać Ci powiadomienia o nowych matchach i wiadomościach.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Spark używa Twojej lokalizacji, aby pokazywać osoby w pobliżu.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Spark używa Twojej lokalizacji, aby pokazywać osoby w pobliżu.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Spark używa kamery do weryfikacji zdjęć profilowych.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Spark potrzebuje dostępu do zdjęć, aby móc dodać je do profilu.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
