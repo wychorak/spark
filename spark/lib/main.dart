@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,31 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'features/notifications/notification_service.dart';
+
+/// In-memory session storage — avoids localStorage/SharedPreferences errors
+/// on web (Edge Tracking Prevention on localhost). Session lasts for the tab lifetime.
+class _InMemoryLocalStorage extends LocalStorage {
+  String? _value;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<String?> accessToken() async => _value;
+
+  @override
+  Future<bool> hasAccessToken() async => _value != null;
+
+  @override
+  Future<void> persistSession(String persistSessionString) async {
+    _value = persistSessionString;
+  }
+
+  @override
+  Future<void> removePersistedSession() async {
+    _value = null;
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,8 +93,12 @@ Future<void> main() async {
       defaultValue:
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGRlbWF2aWRuc2ttaGN5cWluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM1MjM4NzcsImV4cCI6MjA1OTA5OTg3N30.g_5C5lFNQMtOzNkQzP1E2fXG6e_M0IC4e3gsgPLuBWo',
     ),
-    authOptions: const FlutterAuthClientOptions(
+    // On web: in-memory storage avoids localStorage/SharedPreferences errors
+    // caused by Edge Tracking Prevention on localhost.
+    // On native: default SharedPreferences storage is used.
+    authOptions: FlutterAuthClientOptions(
       authFlowType: AuthFlowType.implicit,
+      localStorage: kIsWeb ? _InMemoryLocalStorage() : null,
     ),
   );
 
