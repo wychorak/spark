@@ -65,7 +65,10 @@ Future<void> main() async {
     anonKey: const String.fromEnvironment(
       'SUPABASE_ANON_KEY',
       defaultValue:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGRlbWF2aWRuc2ttaGN5cWluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMjA4NDIsImV4cCI6MjA4OTY5Njg0Mn0.RMvXg1oy3ZC2z4KJb6BI0OcxBaS6yhk5jdnQWTp8yRk',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbGRlbWF2aWRuc2ttaGN5cWluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM1MjM4NzcsImV4cCI6MjA1OTA5OTg3N30.g_5C5lFNQMtOzNkQzP1E2fXG6e_M0IC4e3gsgPLuBWo',
+    ),
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.implicit,
     ),
   );
 
