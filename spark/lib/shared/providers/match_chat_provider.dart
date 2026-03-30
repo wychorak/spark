@@ -223,11 +223,7 @@ final sendMessageProvider =
       'message_type': 'text',
       'is_read': false,
     });
-
-    await client
-        .from('conversations')
-        .update({'last_message_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', conversationId);
+    // last_message_at is updated automatically by trg_messages_update_conversation
   };
 });
 

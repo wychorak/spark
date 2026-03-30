@@ -113,11 +113,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final name = state.uri.queryParameters['name'] ?? '';
           final photo = state.uri.queryParameters['photo'] ?? '';
           final mode = state.uri.queryParameters['mode'] ?? 'relationship';
+          final uid = state.uri.queryParameters['uid'] ?? '';
           return ChatScreen(
             matchId: chatId,
             matchName: name,
             matchPhotoUrl: photo,
             matchMode: mode,
+            otherUserId: uid,
           );
         },
       ),

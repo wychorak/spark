@@ -220,7 +220,8 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                                 '/chat/${item.conversationId}'
                                 '?name=${Uri.encodeComponent(item.otherUserName)}'
                                 '&photo=${Uri.encodeComponent(item.otherUserPhotoUrl)}'
-                                '&mode=${item.otherUserMode}',
+                                '&mode=${item.otherUserMode}'
+                                '&uid=${item.otherUserId}',
                               ),
                             );
                           },

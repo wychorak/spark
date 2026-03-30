@@ -25,6 +25,7 @@ class ChatScreen extends ConsumerStatefulWidget {
   final String matchName;
   final String matchPhotoUrl;
   final String matchMode;
+  final String otherUserId;
 
   const ChatScreen({
     super.key,
@@ -32,6 +33,7 @@ class ChatScreen extends ConsumerStatefulWidget {
     this.matchName = '',
     this.matchPhotoUrl = '',
     this.matchMode = 'relationship',
+    this.otherUserId = '',
   });
 
   @override
@@ -45,10 +47,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ChatRequestStatus _chatRequestStatus = ChatRequestStatus.none;
   bool _isFirstMessage = true;
   bool _checkingRequest = true;
+  DateTime? _otherUserLastActive;
 
   String get _conversationId => widget.matchId;
 
   Color get _modeColor => AppColors.colorForMode(widget.matchMode);
+
+  String get _activityStatus {
+    final t = _otherUserLastActive;
+    if (t == null) return '';
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 5) return 'Online';
+    if (diff.inMinutes < 60) return 'Aktywny ${diff.inMinutes} min temu';
+    if (diff.inHours < 24) return 'Aktywny ${diff.inHours} godz. temu';
+    return 'Aktywny ${diff.inDays} dni temu';
+  }
 
   @override
   void initState() {
@@ -56,7 +69,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(markMessagesReadProvider)(_conversationId);
       _checkChatRequest();
+      _fetchOtherUserActivity();
     });
+  }
+
+  Future<void> _fetchOtherUserActivity() async {
+    if (widget.otherUserId.isEmpty) return;
+    try {
+      final client = Supabase.instance.client;
+      final row = await client
+          .from('user_profiles')
+          .select('last_active_at')
+          .eq('id', widget.otherUserId)
+          .maybeSingle();
+      if (row != null && row['last_active_at'] != null && mounted) {
+        setState(() {
+          _otherUserLastActive =
+              DateTime.parse(row['last_active_at'] as String).toLocal();
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _checkChatRequest() async {
@@ -718,29 +750,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                     const Gap(6),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: modeColor,
-                        boxShadow: [
-                          BoxShadow(
-                            color: modeColor.withValues(alpha: 0.5),
-                            blurRadius: 4,
-                          ),
-                        ],
+                    if (_activityStatus == 'Online')
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: modeColor,
+                          boxShadow: [
+                            BoxShadow(
+                              color: modeColor.withValues(alpha: 0.5),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
-                Text(
-                  AppStrings.chatOnline,
-                  style: GoogleFonts.outfit(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
+                if (_activityStatus.isNotEmpty)
+                  Text(
+                    _activityStatus,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
               ],
             ),
           ],
