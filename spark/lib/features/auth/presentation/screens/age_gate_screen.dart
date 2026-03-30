@@ -87,19 +87,11 @@ class _AgeGateScreenState extends ConsumerState<AgeGateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFFFF5F7),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFFFFF0F5),
-              Color(0xFFFFF5F7),
-              Color(0xFFFFE8F0),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        color: const Color(0xFFFFF5F7),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(

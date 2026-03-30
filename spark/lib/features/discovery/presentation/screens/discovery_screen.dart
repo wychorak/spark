@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/features/matching/presentation/screens/match_screen.dart';
+import 'package:spark/shared/providers/profile_provider.dart';
 
 // ─── Interest emojis ────────────────────────────────────────
 
@@ -84,90 +85,7 @@ class DiscoveryProfile {
   });
 }
 
-// ─── Mock Data (fallback) ───────────────────────────────────
-
-final List<DiscoveryProfile> _mockProfiles = [
-  const DiscoveryProfile(
-    id: '1',
-    name: 'Kasia',
-    age: 24,
-    distanceKm: 3.2,
-    mode: 'relationship',
-    photos: [
-      'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600',
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600',
-    ],
-    bio: 'Kocham podroze, kawe i dobre ksiazki. Szukam kogos, z kim moge odkrywac swiat',
-    interests: ['Podroze', 'Fotografia', 'Kawa', 'Joga', 'Ksiazki'],
-    verified: true,
-    spotifyTrackName: 'Blinding Lights',
-    spotifyArtist: 'The Weeknd',
-    spotifyArtworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c9/5e/3c/c95e3cb1-fd47-3ef4-7c36-b7e8f4e1b1d5/source/100x100bb.jpg',
-  ),
-  const DiscoveryProfile(
-    id: '2',
-    name: 'Maja',
-    age: 22,
-    distanceKm: 7.8,
-    mode: 'friends',
-    photos: [
-      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600',
-      'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=600',
-    ],
-    bio: 'Szukam ekipy na weekendowe wycieczki i wspolne gotowanie!',
-    interests: ['Gotowanie', 'Rower', 'Kino', 'Gry planszowe'],
-    verified: false,
-    spotifyTrackName: 'Levitating',
-    spotifyArtist: 'Dua Lipa',
-  ),
-  const DiscoveryProfile(
-    id: '3',
-    name: 'Ola',
-    age: 27,
-    distanceKm: 1.5,
-    mode: 'fwb',
-    photos: [
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600',
-      'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=600',
-      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600',
-    ],
-    bio: 'Bez zobowiazan, z klasa. Lubie spontaniczne spotkania i dobra muzyke.',
-    interests: ['Muzyka', 'Taniec', 'Fitness', 'Wino', 'Sztuka'],
-    verified: true,
-    spotifyTrackName: 'After Hours',
-    spotifyArtist: 'The Weeknd',
-  ),
-  const DiscoveryProfile(
-    id: '4',
-    name: 'Zuza',
-    age: 25,
-    distanceKm: 12.0,
-    mode: 'relationship',
-    photos: [
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=600',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600',
-    ],
-    bio: 'Programistka z dusza artystki. Szukam kogos z poczuciem humoru.',
-    interests: ['Programowanie', 'Malarstwo', 'Koty', 'Anime', 'Bieganie'],
-    verified: true,
-    spotifyTrackName: 'As It Was',
-    spotifyArtist: 'Harry Styles',
-  ),
-  const DiscoveryProfile(
-    id: '5',
-    name: 'Ania',
-    age: 23,
-    distanceKm: 5.4,
-    mode: 'friends',
-    photos: [
-      'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=600',
-    ],
-    bio: 'Nowa w miescie, chetnie poznam fajnych ludzi na wspolne wyjscia!',
-    interests: ['Koncerty', 'Hiking', 'Siatkowka', 'Kuchnia azjatycka'],
-    verified: false,
-  ),
-];
+// ─── Empty state (no mock data) ─────────────────────────────
 
 // ─── Providers ──────────────────────────────────────────────
 
@@ -242,7 +160,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+        state = DiscoveryState(profiles: const <DiscoveryProfile>[], isLoading: false);
         return;
       }
 
@@ -301,7 +219,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
       final List<dynamic> data = response as List<dynamic>;
 
       if (data.isEmpty) {
-        state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+        state = DiscoveryState(profiles: const <DiscoveryProfile>[], isLoading: false);
         return;
       }
 
@@ -368,7 +286,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         }
 
         if (age < state.ageFilter.start || age > state.ageFilter.end) continue;
-        final gender = row['gender']?.toString() ?? 'female';
+        final gender = row['gender']?.toString() ?? 'other';
         if (!state.genderFilters.contains(gender)) continue;
         if (!modesList.any((m) => state.modeFilters.contains(m))) continue;
 
@@ -390,7 +308,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         if (myLat != null && myLon != null && theirLat != null && theirLon != null) {
           distanceKm = _haversineKm(myLat, myLon, theirLat, theirLon);
         } else {
-          distanceKm = Random().nextDouble() * 15 + 0.5;
+          distanceKm = -1;
         }
 
         profiles.add(DiscoveryProfile(
@@ -401,9 +319,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
           mode: mode,
           photos: photoUrls.isNotEmpty
               ? photoUrls
-              : [
-                  'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600'
-                ],
+              : const [],
           bio: row['bio']?.toString() ?? '',
           interests: interests,
           verified: row['is_verified'] == true,
@@ -420,7 +336,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
       }
 
       if (profiles.isEmpty) {
-        state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+        state = DiscoveryState(profiles: const <DiscoveryProfile>[], isLoading: false);
         return;
       }
 
@@ -431,7 +347,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
       );
     } catch (e) {
       debugPrint('Discovery error: $e');
-      state = DiscoveryState(profiles: _mockProfiles, isLoading: false);
+      state = DiscoveryState(profiles: const <DiscoveryProfile>[], isLoading: false);
     }
   }
 
@@ -610,7 +526,14 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
   double _dragX = 0;
   double _dragY = 0;
   int _currentPhotoIndex = 0;
-  final bool _isPremium = false; // TODO: wire to actual premium state
+  bool get _isPremium {
+      final profileAsync = ref.read(currentProfileProvider);
+      return profileAsync.when(
+        data: (p) => p?.isPremium ?? false,
+        loading: () => false,
+        error: (_, __) => false,
+      );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -739,25 +662,45 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
         child: Container(
           margin: EdgeInsets.fromLTRB(10, topPadding + 70, 10, 130),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            color: AppColors.card,
+            borderRadius: BorderRadius.circular(28),
+            color: const Color(0xFFFFF5F7),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.18),
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: AppColors.textPrimary.withValues(alpha: 0.08),
+                color: AppColors.primary.withValues(alpha: 0.12),
                 blurRadius: 24,
+                spreadRadius: 0,
                 offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(27),
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Photo with cacheWidth for performance
+                // ── Full-card photo ─────────────────────────
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
-                  child: Image.network(
+                  child: profile.photos.isEmpty
+                      ? Container(
+                          key: const ValueKey('no_photo'),
+                          color: const Color(0xFFFFF0F5),
+                          child: Center(
+                            child: Icon(Icons.person_rounded,
+                                size: 100,
+                                color: AppColors.primary.withValues(alpha: 0.2)),
+                          ),
+                        )
+                      : Image.network(
                     profile.photos[_currentPhotoIndex.clamp(0, profile.photos.length - 1)],
                     key: ValueKey('${profile.id}_$_currentPhotoIndex'),
                     fit: BoxFit.cover,
@@ -784,124 +727,102 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
                   ),
                 ),
 
-                // Photo dots indicator
+                // Top gradient for dots
+                Positioned(
+                  top: 0, left: 0, right: 0,
+                  child: Container(
+                    height: 64,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.28),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Photo dots
                 if (profile.photos.length > 1)
                   Positioned(
-                    top: 12,
-                    left: 14,
-                    right: 14,
+                    top: 12, left: 14, right: 14,
                     child: _PhotoDotsIndicator(
                       count: profile.photos.length,
                       current: _currentPhotoIndex,
                     ),
                   ),
 
-                // Custom gradient overlay
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: 300,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          gradStart.withValues(alpha: 0.15),
-                          gradEnd.withValues(alpha: 0.55),
-                          gradEnd.withValues(alpha: 0.85),
-                        ],
-                        stops: const [0.0, 0.3, 0.7, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Profile info overlay
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: _ProfileInfoOverlay(profile: profile),
-                ),
-
-                // Swipe indicators
-                if (_dragX > 50)
+                // Swipe SPARK! indicator
+                if (_dragX > 30)
                   Positioned(
-                    top: 80,
-                    left: 24,
+                    top: 50, left: 20,
                     child: Transform.rotate(
-                      angle: -0.2,
+                      angle: -0.35,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.15),
-                          border: Border.all(color: AppColors.primary, width: 2.5),
-                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.primary, width: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          color: AppColors.primary.withValues(alpha: 0.08),
                         ),
-                        child: Text(
-                          'SMASH',
-                          style: GoogleFonts.outfit(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
+                        child: Text('SPARK! ✨',
+                          style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800,
+                              color: AppColors.primary, letterSpacing: 1.5)),
                       ),
                     ),
                   ),
-                if (_dragX < -50)
+
+                // Swipe PASS indicator
+                if (_dragX < -30)
                   Positioned(
-                    top: 80,
-                    right: 24,
+                    top: 50, right: 20,
                     child: Transform.rotate(
-                      angle: 0.2,
+                      angle: 0.35,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.06),
-                          border: Border.all(
-                              color: AppColors.textHint.withValues(alpha: 0.6),
-                              width: 2.5),
-                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade400, width: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.grey.withValues(alpha: 0.08),
                         ),
-                        child: Text(
-                          'PASS',
-                          style: GoogleFonts.outfit(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textHint,
-                          ),
-                        ),
+                        child: Text('PASS',
+                          style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800,
+                              color: Colors.grey.shade500, letterSpacing: 1.5)),
                       ),
                     ),
                   ),
-                if (_dragY < -50)
+
+                // Swipe UP superlike
+                if (_dragY < -30)
                   Positioned(
-                    bottom: 220,
-                    left: 0,
-                    right: 0,
+                    bottom: 180, left: 0, right: 0,
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                          border: Border.all(color: const Color(0xFFFFD700), width: 2.5),
-                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFFBF00), width: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          color: const Color(0xFFFFBF00).withValues(alpha: 0.08),
                         ),
-                        child: Text(
-                          'SUPER LIKE',
-                          style: GoogleFonts.outfit(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFFFFD700),
-                          ),
-                        ),
+                        child: Text('⭐ SUPER LIKE',
+                          style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800,
+                              color: const Color(0xFFFFBF00), letterSpacing: 1.5)),
                       ),
                     ),
                   ),
+
+                // ── Liquid glass info panel at bottom ───────
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: _ProfileInfoPanel(
+                    profile: profile,
+                    gradStart: gradStart,
+                    gradEnd: gradEnd,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1546,7 +1467,7 @@ class _ProfileInfoOverlay extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.6), size: 15),
               const Gap(3),
               Text(
-                '${profile.distanceKm.toStringAsFixed(1)} km',
+                profile.distanceKm < 0 ? 'Blisko' : '${profile.distanceKm.toStringAsFixed(1)} km',
                 style: GoogleFonts.outfit(
                   fontSize: 14,
                   color: Colors.white.withValues(alpha: 0.6),
@@ -1567,15 +1488,19 @@ class _ProfileInfoOverlay extends StatelessWidget {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 0.5),
                   ),
                   child: Text(
                     emoji != null ? '$emoji $i' : i,
                     style: GoogleFonts.outfit(
                       fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      shadows: [
+                        Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 4),
+                      ],
                     ),
                   ),
                 );
@@ -1591,6 +1516,179 @@ class _ProfileInfoOverlay extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ─── Profile Info Panel (below photo) ───────────────────────
+
+class _ProfileInfoPanel extends StatelessWidget {
+  final DiscoveryProfile profile;
+  final Color gradStart;
+  final Color gradEnd;
+
+  const _ProfileInfoPanel({
+    required this.profile,
+    required this.gradStart,
+    required this.gradEnd,
+  });
+
+  String get _modeLabel {
+    switch (profile.mode) {
+      case 'friends': return 'Znajomi';
+      case 'fwb': return 'FWB';
+      default: return 'Związek';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        bottomLeft: Radius.circular(27),
+        bottomRight: Radius.circular(27),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.78),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.6),
+                width: 0.5,
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Name + age + verified + mode badge
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    profile.name,
+                    style: GoogleFonts.outfit(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const Gap(6),
+                  Text(
+                    '${profile.age}',
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w400,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  if (profile.verified) ...[
+                    const Gap(4),
+                    const Icon(Icons.verified_rounded, color: AppColors.info, size: 16),
+                  ],
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [gradStart, gradEnd],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _modeLabel,
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(4),
+              // Distance + bio snippet
+              Row(
+                children: [
+                  Icon(Icons.location_on_outlined, color: AppColors.textHint, size: 13),
+                  const Gap(2),
+                  Text(
+                    profile.distanceKm < 0 ? 'Blisko' : '${profile.distanceKm.toStringAsFixed(1)} km',
+                    style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textHint),
+                  ),
+                  if (profile.bio.isNotEmpty) ...[
+                    const Gap(6),
+                    Text('·', style: GoogleFonts.outfit(color: AppColors.textHint)),
+                    const Gap(6),
+                    Expanded(
+                      child: Text(
+                        profile.bio,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              // "Fajnie jakbyś lubił/a" section
+              if (profile.interests.isNotEmpty) ...[
+                const Gap(10),
+                Text(
+                  'Fajnie jakbyś lubił/a:',
+                  style: GoogleFonts.outfit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const Gap(6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: profile.interests.take(3).map((i) {
+                    final e = _kDiscoveryInterestEmojis[i];
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [gradStart.withValues(alpha: 0.15), gradEnd.withValues(alpha: 0.10)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: gradStart.withValues(alpha: 0.3), width: 0.5),
+                      ),
+                      child: Text(
+                        e != null ? '$e $i' : i,
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: gradStart,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+              // Spotify mini player
+              if (profile.spotifyTrackName != null) ...[
+                const Gap(10),
+                _SpotifyMiniPlayer(
+                  trackName: profile.spotifyTrackName!,
+                  artist: profile.spotifyArtist ?? '',
+                  spotifyPreviewUrl: profile.spotifyPreviewUrl,
+                  artworkUrl: profile.spotifyArtworkUrl,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1711,7 +1809,7 @@ class _ActionBar extends StatelessWidget {
               ),
               // Chat request (premium)
               _ActionButton(
-                icon: isPremium ? Icons.chat_bubble_rounded : Icons.lock_rounded,
+                icon: Icons.chat_bubble_rounded,
                 color: const Color(0xFF74B9FF),
                 backgroundColor: const Color(0xFF74B9FF).withValues(alpha: 0.12),
                 size: 50,
@@ -1917,45 +2015,59 @@ class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
+            color: const Color(0xFFF0FDF4),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color(0xFF1DB954).withValues(alpha: 0.3),
+              color: const Color(0xFF1DB954).withValues(alpha: 0.25),
             ),
           ),
           child: Row(
             children: [
               if (widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty)
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                   child: Image.network(
                     widget.artworkUrl!,
-                    width: 36,
-                    height: 36,
+                    width: 44,
+                    height: 44,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.music_note_rounded,
-                      color: Color(0xFF1DB954),
-                      size: 18,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.music_note_rounded,
+                          color: Color(0xFF1DB954), size: 22),
                     ),
                   ),
                 )
               else
-                const Icon(Icons.music_note_rounded,
-                    color: Color(0xFF1DB954), size: 18),
-              const Gap(8),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.music_note_rounded,
+                      color: Color(0xFF1DB954), size: 22),
+                ),
+              const Gap(10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       widget.trackName,
                       style: GoogleFonts.outfit(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1963,7 +2075,7 @@ class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
                       widget.artist,
                       style: GoogleFonts.outfit(
                         fontSize: 11,
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: AppColors.textSecondary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2145,7 +2257,7 @@ class _FullProfileViewState extends State<_FullProfileView> {
                           color: AppColors.textHint, size: 15),
                       const Gap(3),
                       Text(
-                        '${profile.distanceKm.toStringAsFixed(1)} km',
+                        profile.distanceKm < 0 ? 'Blisko' : '${profile.distanceKm.toStringAsFixed(1)} km',
                         style: GoogleFonts.outfit(
                           fontSize: 14,
                           color: AppColors.textHint,

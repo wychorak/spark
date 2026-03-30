@@ -1,5 +1,12 @@
 # SPARK – Project Memory & Architecture Rules
 
+## Dev Server
+- **Port: 9091** (PROTECTED — never change, never use 9090 or other ports)
+- Server: `spark-server.js` (Node.js static server at repo root)
+- Start: `preview_start("spark")` in launch.json → port 9091
+- Build: `flutter build web --release` from `spark/` directory
+- After build: restart preview server to serve new files
+
 ## Project Overview
 Spark – Cherry blossom dating + friends + FWB app for iOS & Android (Flutter single codebase + Supabase backend).
 Main colors: `#FF6B9D` (soft pink) + `#FFF5F7` (cream). Style: light cherry blossom aesthetic, glassmorphism.

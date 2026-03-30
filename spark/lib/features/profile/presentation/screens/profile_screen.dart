@@ -169,7 +169,10 @@ class _ProfileBody extends ConsumerWidget {
               // Gradient strip
               const Gap(16),
               _GradientStrip(gradStart: gradStart, gradEnd: gradEnd),
-              const Gap(28),
+              const Gap(20),
+              // Preview card
+              _PreviewCardButton(profile: profile, gradStart: gradStart, gradEnd: gradEnd),
+              const Gap(12),
               // Actions
               _EditButton(),
             ]),
@@ -854,18 +857,21 @@ class _SocialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final socials = <(IconData, String, String, Color)>[];
+    final socials = <(String, String, String, Color, List<Color>)>[];
     if (profile.instagramHandle?.isNotEmpty ?? false) {
-      socials.add((Icons.camera_alt_outlined, 'Instagram',
-          '@${profile.instagramHandle}', const Color(0xFFE1306C)));
+      socials.add(('IG', 'Instagram',
+          '@${profile.instagramHandle}', const Color(0xFFE1306C),
+          [const Color(0xFFF58529), const Color(0xFFDD2A7B), const Color(0xFF8134AF)]));
     }
     if (profile.tiktokHandle?.isNotEmpty ?? false) {
-      socials.add((Icons.music_video_outlined, 'TikTok',
-          '@${profile.tiktokHandle}', const Color(0xFF000000)));
+      socials.add(('TT', 'TikTok',
+          '@${profile.tiktokHandle}', const Color(0xFF000000),
+          [const Color(0xFF25F4EE), const Color(0xFFFE2C55), const Color(0xFF000000)]));
     }
     if (profile.snapchatHandle?.isNotEmpty ?? false) {
-      socials.add((Icons.chat_bubble_outline_rounded, 'Snapchat',
-          '@${profile.snapchatHandle}', const Color(0xFFFFFC00)));
+      socials.add(('SC', 'Snapchat',
+          '@${profile.snapchatHandle}', const Color(0xFFFFFC00),
+          [const Color(0xFFFFFC00), const Color(0xFFFFE500)]));
     }
 
     return Container(
@@ -886,58 +892,71 @@ class _SocialCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('🌐', style: TextStyle(fontSize: 16)),
-              const Gap(8),
-              Text(
-                'Social media',
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
+          Text(
+            'SOCIAL MEDIA',
+            style: GoogleFonts.outfit(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textHint,
+              letterSpacing: 1.2,
+            ),
           ),
-          const Gap(12),
-          ...socials.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: s.$4.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+          const Gap(14),
+          Row(
+            children: socials.map((s) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: s.$5,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      child: Icon(s.$1, size: 18, color: s.$4),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: s.$4.withValues(alpha: 0.25),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    const Gap(12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(s.$2,
-                              style: GoogleFonts.outfit(
-                                  fontSize: 11,
-                                  color: AppColors.textHint,
-                                  fontWeight: FontWeight.w500)),
-                          Text(s.$3,
-                              style: GoogleFonts.outfit(
-                                  fontSize: 14,
-                                  color: AppColors.textPrimary,
-                                  fontWeight: FontWeight.w600)),
-                        ],
-                      ),
+                    child: Column(
+                      children: [
+                        Text(
+                          s.$1,
+                          style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: s.$4 == const Color(0xFFFFFC00)
+                                ? Colors.black
+                                : Colors.white,
+                          ),
+                        ),
+                        const Gap(4),
+                        Text(
+                          s.$3,
+                          style: GoogleFonts.outfit(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: (s.$4 == const Color(0xFFFFFC00)
+                                    ? Colors.black
+                                    : Colors.white)
+                                .withValues(alpha: 0.85),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                    Icon(Icons.chevron_right_rounded,
-                        size: 18, color: AppColors.textHint),
-                  ],
+                  ),
                 ),
-              )),
+              );
+            }).toList(),
+          ),
         ],
       ),
     ).animate().fadeIn(delay: 350.ms, duration: 300.ms);
@@ -986,6 +1005,244 @@ class _GradientStrip extends StatelessWidget {
         ],
       ),
     ).animate().fadeIn(delay: 400.ms, duration: 300.ms);
+  }
+}
+
+// ── Preview Card Button ──
+
+class _PreviewCardButton extends StatelessWidget {
+  const _PreviewCardButton({required this.profile, required this.gradStart, required this.gradEnd});
+  final UserProfile profile;
+  final Color gradStart;
+  final Color gradEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showPreview(context),
+      child: Container(
+        width: double.infinity,
+        height: 54,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [gradStart.withValues(alpha: 0.08), gradEnd.withValues(alpha: 0.05)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: gradStart.withValues(alpha: 0.25), width: 1),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.visibility_outlined, color: gradStart, size: 18),
+            const Gap(8),
+            Text(
+              'Podgląd karty',
+              style: GoogleFonts.outfit(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: gradStart,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPreview(BuildContext context) {
+    final photos = <String>[];
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        Supabase.instance.client.storage
+            .from('photos')
+            .list(path: 'profiles/$userId')
+            .then((files) {
+          final base = 'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/photos/';
+          for (final f in files) {
+            photos.add('${base}profiles/$userId/${f.name}');
+          }
+          _openPreviewSheet(context, photos);
+        });
+      } else {
+        _openPreviewSheet(context, photos);
+      }
+    } catch (_) {
+      _openPreviewSheet(context, photos);
+    }
+  }
+
+  void _openPreviewSheet(BuildContext context, List<String> photos) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFF5F7),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const Gap(12),
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Gap(12),
+              Text('Tak widzą Cię inni',
+                  style: GoogleFonts.outfit(
+                    fontSize: 18, fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  )),
+              const Gap(16),
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    color: Colors.white,
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.18), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(27),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Photo
+                        if (photos.isNotEmpty)
+                          Image.network(photos.first, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: const Color(0xFFFFF0F5),
+                              child: Icon(Icons.person_rounded, size: 100,
+                                  color: AppColors.primary.withValues(alpha: 0.2)),
+                            ))
+                        else
+                          Container(
+                            color: const Color(0xFFFFF0F5),
+                            child: Icon(Icons.person_rounded, size: 100,
+                                color: AppColors.primary.withValues(alpha: 0.2)),
+                          ),
+                        // Info panel
+                        Positioned(
+                          bottom: 0, left: 0, right: 0,
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(27),
+                              bottomRight: Radius.circular(27),
+                            ),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                              child: Container(
+                                color: Colors.white.withValues(alpha: 0.78),
+                                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          profile.displayName ?? '',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 22, fontWeight: FontWeight.w700,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        const Gap(6),
+                                        Text(
+                                          profile.age != null ? '${profile.age}' : '',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 18, fontWeight: FontWeight.w400,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(colors: [gradStart, gradEnd]),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            profile.modes.isNotEmpty ? profile.modes.first : '',
+                                            style: GoogleFonts.outfit(
+                                              fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (profile.bio != null && profile.bio!.isNotEmpty) ...[
+                                      const Gap(4),
+                                      Text(profile.bio!, maxLines: 2, overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
+                                    ],
+                                    if (profile.interests.isNotEmpty) ...[
+                                      const Gap(8),
+                                      Wrap(
+                                        spacing: 6, runSpacing: 4,
+                                        children: profile.interests.take(4).map((i) {
+                                          return Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: gradStart.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(14),
+                                            ),
+                                            child: Text(i,
+                                                style: GoogleFonts.outfit(
+                                                  fontSize: 11, fontWeight: FontWeight.w600, color: gradStart)),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                    if (profile.spotifyTrackName != null) ...[
+                                      const Gap(8),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.music_note_rounded, size: 14, color: const Color(0xFF1DB954)),
+                                          const Gap(4),
+                                          Expanded(
+                                            child: Text(
+                                              '${profile.spotifyTrackName} — ${profile.spotifyArtist ?? ''}',
+                                              style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary),
+                                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Gap(24),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

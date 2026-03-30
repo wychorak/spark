@@ -266,123 +266,94 @@ class _NewMatchAvatar extends StatelessWidget {
 // ─── Premium Liked Banner ───────────────────────────────────
 
 class _PremiumLikedBanner extends StatelessWidget {
-  static const _mockBlurredPhotos = [
-    'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=200',
-    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
-    'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=200',
-  ];
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Odblokuj Spark Premium!'),
-            backgroundColor: AppColors.surfaceLight,
-          ),
-        );
-      },
+      onTap: () => context.push('/paywall'),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF1A0A2E), Color(0xFF16082A)],
+            colors: [Color(0xFFFFF5F7), Color(0xFFFFF0F5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: AppColors.warning.withValues(alpha: 0.3), width: 1),
+              color: AppColors.primary.withValues(alpha: 0.2), width: 1),
           boxShadow: [
             BoxShadow(
-              color: AppColors.warning.withValues(alpha: 0.1),
+              color: AppColors.primary.withValues(alpha: 0.08),
               blurRadius: 16,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Row(
           children: [
-            SizedBox(
-              width: 90,
-              height: 50,
-              child: Stack(
-                children: _mockBlurredPhotos.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final photoUrl = entry.value;
-                  return Positioned(
-                    left: i * 22.0,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: AppColors.warning.withValues(alpha: 0.5),
-                            width: 1.5),
-                      ),
-                      child: ClipOval(
-                        child: ColorFiltered(
-                          colorFilter: const ColorFilter.mode(
-                            AppColors.overlay,
-                            BlendMode.srcATop,
-                          ),
-                          child: CachedNetworkImage(
-                            imageUrl: photoUrl,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
+              child: const Icon(Icons.workspace_premium_rounded,
+                  color: Colors.white, size: 26),
             ),
-            const Gap(12),
+            const Gap(14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.lock_rounded,
-                          color: AppColors.warning, size: 16),
-                      const Gap(4),
-                      Text(
-                        'Kto Cię polubił',
-                        style: GoogleFonts.outfit(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.warning,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Spark Premium',
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   const Gap(2),
                   Text(
-                    '${_mockBlurredPhotos.length} osób czeka na Ciebie',
+                    'Kto Cię polubił, cofanie, Super Like i więcej',
                     style: GoogleFonts.outfit(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
+            const Gap(8),
             Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                  colors: [AppColors.primary, Color(0xFFFF8FAB)],
                 ),
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.radiusRound),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                'Premium',
+                'Odblokuj',
                 style: GoogleFonts.outfit(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.black,
+                  color: Colors.white,
                 ),
               ),
             ),

@@ -32,8 +32,8 @@ class SparkBottomNav extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _NavItem(
-                  icon: Icons.local_fire_department_outlined,
-                  activeIcon: Icons.local_fire_department,
+                  icon: Icons.search_rounded,
+                  activeIcon: Icons.search_rounded,
                   label: AppStrings.navDiscover,
                   isActive: currentIndex == 0,
                   onTap: () => ref.read(homeTabProvider.notifier).state = 0,

@@ -21,11 +21,9 @@ class MatchScreen extends StatefulWidget {
 
   const MatchScreen({
     super.key,
-    this.myPhotoUrl =
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300',
-    this.matchPhotoUrl =
-        'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=300',
-    this.matchName = 'Kasia',
+    this.myPhotoUrl = '',
+    this.matchPhotoUrl = '',
+    this.matchName = '',
     required this.onSendMessage,
     required this.onContinueBrowsing,
   });
