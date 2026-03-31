@@ -3,15 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
+import 'package:spark/core/services/analytics_service.dart';
 import 'package:spark/core/theme/app_theme.dart';
+import 'package:spark/shared/providers/profile_provider.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
 
 // ── Verification Step ──
@@ -412,12 +414,40 @@ class _ProcessingStepState extends ConsumerState<_ProcessingStep> {
   @override
   void initState() {
     super.initState();
-    // Simulate processing delay
-    Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        ref.read(_stepProvider.notifier).state = _VerificationStep.result;
+    unawaited(_completeVerification());
+  }
+
+  Future<void> _completeVerification() async {
+    await AnalyticsService.instance.track('photo_verification_started');
+    await Future<void>.delayed(const Duration(seconds: 3));
+
+    var success = true;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId == null) {
+      success = false;
+    } else {
+      try {
+        await Supabase.instance.client.rpc(
+          'fn_submit_photo_verification',
+          params: {
+            'p_selfie_path': 'verifications/$userId/latest-selfie.jpg',
+          },
+        );
+        ref.invalidate(profileByIdProvider(userId));
+      } catch (_) {
+        success = false;
       }
-    });
+    }
+
+    if (!mounted) return;
+
+    ref.read(_verificationSuccessProvider.notifier).state = success;
+    ref.read(_stepProvider.notifier).state = _VerificationStep.result;
+
+    await AnalyticsService.instance.track(
+      success ? 'photo_verification_submitted' : 'photo_verification_failed',
+    );
   }
 
   @override
@@ -552,7 +582,7 @@ class _ResultStep extends ConsumerWidget {
             const Gap(AppDimensions.spacing32),
 
             Text(
-              'Zweryfikowano!',
+              'Wyslano do weryfikacji',
               style: GoogleFonts.outfit(
                 fontSize: 28,
                 fontWeight: FontWeight.w700,
@@ -566,7 +596,7 @@ class _ResultStep extends ConsumerWidget {
             const Gap(AppDimensions.spacing12),
 
             Text(
-              'Twoj profil zostal pomyslnie zweryfikowany. Teraz inni uzytkownicy beda widziec badge weryfikacji.',
+              'Twoje selfie trafilo do kolejki review. Po akceptacji od razu zobaczysz badge weryfikacji na profilu.',
               style: GoogleFonts.outfit(
                 fontSize: 15,
                 color: AppColors.textSecondary,

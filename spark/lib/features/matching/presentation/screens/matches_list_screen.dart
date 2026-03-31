@@ -201,7 +201,8 @@ class MatchesListScreen extends ConsumerWidget {
       '/chat/${match.conversationId}'
       '?name=${Uri.encodeComponent(match.otherUserName)}'
       '&photo=${Uri.encodeComponent(match.otherUserPhotoUrl)}'
-      '&mode=${match.otherUserMode}',
+      '&mode=${match.otherUserMode}'
+      '&uid=${match.otherUserId}',
     );
   }
 }
@@ -241,6 +242,11 @@ class _NewMatchAvatar extends StatelessWidget {
                 imageUrl: match.otherUserPhotoUrl,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
+                  color: AppColors.surfaceLight,
+                  child: const Icon(Icons.person,
+                      color: AppColors.textHint, size: 28),
+                ),
+                errorWidget: (_, __, ___) => Container(
                   color: AppColors.surfaceLight,
                   child: const Icon(Icons.person,
                       color: AppColors.textHint, size: 28),
@@ -409,6 +415,11 @@ class _ConversationTile extends StatelessWidget {
                   fit: BoxFit.cover,
                   placeholder: (_, __) => Container(
                     color: AppColors.surfaceLight,
+                  ),
+                  errorWidget: (_, __, ___) => Container(
+                    color: AppColors.surfaceLight,
+                    child: const Icon(Icons.person,
+                        color: AppColors.textHint, size: 28),
                   ),
                 ),
               ),

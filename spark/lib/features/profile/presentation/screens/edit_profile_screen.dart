@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -312,6 +311,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     final photos = [...ref.read(_photosProvider)];
                     photos[index] = null;
                     ref.read(_photosProvider.notifier).state = photos;
+                    final picked = {...ref.read(_pickedFilesProvider)};
+                    picked.remove(index);
+                    ref.read(_pickedFilesProvider.notifier).state = picked;
                     Navigator.pop(ctx);
                   },
                 ),
@@ -382,6 +384,41 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           bytes,
           fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
         );
+
+        await supabase.rpc('fn_save_user_photo', params: {
+          'p_storage_path': storagePath,
+          'p_position': i,
+          'p_is_primary': i == 0,
+        });
+      }
+
+      final removedPositions = <int>[];
+      for (int i = 0; i < photos.length; i++) {
+        if (photos[i] == null) {
+          removedPositions.add(i);
+        }
+      }
+
+      if (removedPositions.isNotEmpty) {
+        await supabase
+            .from('user_photos')
+            .delete()
+            .eq('user_id', userId)
+            .inFilter('position', removedPositions);
+      }
+
+      for (int i = 0; i < photos.length; i++) {
+        final photo = photos[i];
+        if (photo == null) continue;
+
+        if (photo.startsWith('http')) {
+          final storagePath = 'profiles/$userId/photo_$i.jpg';
+          await supabase.rpc('fn_save_user_photo', params: {
+            'p_storage_path': storagePath,
+            'p_position': i,
+            'p_is_primary': i == 0,
+          });
+        }
       }
 
       await supabase.from('user_profiles').update({

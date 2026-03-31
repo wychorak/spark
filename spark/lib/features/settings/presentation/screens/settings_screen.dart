@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/router/app_router.dart';
+import 'package:spark/core/services/analytics_service.dart';
+import 'package:spark/core/services/notification_preferences_service.dart';
+import 'package:spark/core/services/privacy_preferences_service.dart';
+import 'package:spark/core/services/secure_storage_service.dart';
 import 'package:spark/shared/providers/auth_provider.dart';
+import 'package:spark/shared/providers/profile_provider.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -35,27 +39,43 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  bool _isPremium = false;
   int _blockedCount = 0;
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
+    _loadBiometricPreference();
     _loadRememberDevice();
+    _loadNotificationPreferences();
+    _loadPrivacyPreferences();
     _loadBlockedCount();
   }
 
+  Future<void> _loadBiometricPreference() async {
+    final value = await SecureStorageService.instance.readBool(
+      'biometric_enabled',
+    );
+    if (mounted) {
+      ref.read(_biometricProvider.notifier).state = value;
+    }
+  }
+
+  Future<void> _saveBiometricPreference(bool value) async {
+    await SecureStorageService.instance.writeBool('biometric_enabled', value);
+  }
+
   Future<void> _loadRememberDevice() async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getBool('remember_device') ?? false;
+    final value = await SecureStorageService.instance.readBool(
+      'remember_device',
+    );
     if (mounted) {
       ref.read(_rememberDeviceProvider.notifier).state = value;
     }
   }
 
   Future<void> _saveRememberDevice(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('remember_device', value);
+    await SecureStorageService.instance.writeBool('remember_device', value);
   }
 
   Future<void> _loadBlockedCount() async {
@@ -73,9 +93,102 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (_) {}
   }
 
+  Future<void> _loadNotificationPreferences() async {
+    final matches =
+        await NotificationPreferencesService.instance.getMatchesEnabled();
+    final messages =
+        await NotificationPreferencesService.instance.getMessagesEnabled();
+    final superlikes =
+        await NotificationPreferencesService.instance.getSuperlikesEnabled();
+    final marketing =
+        await NotificationPreferencesService.instance.getMarketingEnabled();
+
+    if (!mounted) return;
+
+    ref.read(_notifyMatchesProvider.notifier).state = matches;
+    ref.read(_notifyMessagesProvider.notifier).state = messages;
+    ref.read(_notifySuperlikesProvider.notifier).state = superlikes;
+    ref.read(_notifyMarketingProvider.notifier).state = marketing;
+  }
+
+  Future<void> _loadPrivacyPreferences() async {
+    final showDistance =
+        await PrivacyPreferencesService.instance.getShowDistance();
+    final showActivity =
+        await PrivacyPreferencesService.instance.getShowActivity();
+
+    if (!mounted) return;
+
+    ref.read(_showDistanceProvider.notifier).state = showDistance;
+    ref.read(_showActivityProvider.notifier).state = showActivity;
+  }
+
+  Future<bool> _authorizeSensitiveAction(BuildContext context) async {
+    final biometricEnabled = ref.read(_biometricProvider);
+    if (!biometricEnabled) return true;
+
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      if (!canCheck && !isSupported) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Biometria nie jest dostępna na tym urządzeniu.',
+                style: GoogleFonts.outfit(),
+              ),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+        return false;
+      }
+
+      final authenticated = await _localAuth.authenticate(
+        localizedReason: 'Potwierdź tożsamość, aby wykonać tę akcję.',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (!authenticated && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Nie udało się potwierdzić tożsamości.',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+
+      return authenticated;
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Błąd biometrii. Spróbuj ponownie.',
+              style: GoogleFonts.outfit(),
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final userEmail = ref.watch(currentUserProvider)?.email ?? '';
+    final isPremium = ref.watch(currentProfileProvider).maybeWhen(
+          data: (profile) => profile?.isPremium ?? false,
+          orElse: () => false,
+        );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -103,6 +216,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Gap(AppDimensions.spacing16),
+            _SettingsOverviewCard(
+              userEmail: userEmail,
+              isPremium: isPremium,
+              blockedCount: _blockedCount,
+            ),
+            const Gap(AppDimensions.spacing24),
 
             // ── Konto ──
             _SectionHeader(label: AppStrings.settingsAccount),
@@ -123,18 +242,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const _SoftDivider(),
                 _ActionTile(
                   icon: Icons.lock_outline,
+                  subtitle: 'Zadbaj o bezpieczeństwo konta i aktualny dostęp.',
                   title: 'Zmień hasło',
                   onTap: () => _handleChangePassword(context, userEmail),
                 ),
                 const _SoftDivider(),
                 _ToggleTile(
                   icon: Icons.fingerprint,
+                  subtitle: 'Potwierdzaj wrażliwe akcje odciskiem palca lub Face ID.',
                   title: 'Logowanie biometryczne',
                   provider: _biometricProvider,
+                  onChanged: (value) => _saveBiometricPreference(value),
                 ),
                 const _SoftDivider(),
                 _ToggleTile(
                   icon: Icons.devices,
+                  subtitle: 'Pozostań zalogowany na swoim prywatnym telefonie.',
                   title: 'Zapamiętaj urządzenie',
                   provider: _rememberDeviceProvider,
                   onChanged: (value) => _saveRememberDevice(value),
@@ -151,29 +274,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 _ActionTile(
                   icon: Icons.workspace_premium,
-                  title: _isPremium ? 'Spark Premium' : 'Przejdź na Premium',
+                  subtitle: isPremium
+                      ? 'Zarządzaj korzyściami premium i planem subskrypcji.'
+                      : 'Odblokuj większą widoczność, cofanie swipe i zaawansowane filtry.',
+                  title: isPremium ? 'Spark Premium' : 'Przejdź na Premium',
                   titleColor: AppColors.primary,
                   iconColor: AppColors.primary,
                   trailing: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _isPremium
+                      color: isPremium
                           ? AppColors.primary.withValues(alpha: 0.15)
                           : AppColors.primary,
                       borderRadius: BorderRadius.circular(AppDimensions.radiusRound),
                     ),
                     child: Text(
-                      _isPremium ? 'AKTYWNY' : 'PRO',
+                      isPremium ? 'AKTYWNY' : 'PRO',
                       style: GoogleFonts.outfit(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: _isPremium ? AppColors.primary : AppColors.white,
+                        color: isPremium ? AppColors.primary : AppColors.white,
                       ),
                     ),
                   ),
                   onTap: () => context.pushNamed(RouteNames.paywall),
                 ),
-                if (_isPremium) ...[
+                if (isPremium) ...[
                   const _SoftDivider(),
                   _InfoTile(
                     icon: Icons.calendar_today_outlined,
@@ -199,26 +325,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 _ToggleTile(
                   icon: Icons.favorite_outline,
+                  subtitle: 'Powiadomimy Cię od razu, gdy pojawi się nowe dopasowanie.',
                   title: 'Nowe pary',
                   provider: _notifyMatchesProvider,
+                  onChanged:
+                      NotificationPreferencesService.instance.setMatchesEnabled,
                 ),
                 const _SoftDivider(),
                 _ToggleTile(
                   icon: Icons.chat_bubble_outline,
+                  subtitle: 'Otrzymuj alerty o nowych wiadomościach i odpowiedziach.',
                   title: 'Wiadomości',
                   provider: _notifyMessagesProvider,
+                  onChanged:
+                      NotificationPreferencesService.instance.setMessagesEnabled,
                 ),
                 const _SoftDivider(),
                 _ToggleTile(
                   icon: Icons.star_outline,
+                  subtitle: 'Daj znać, gdy ktoś wyśle Ci mocniejsze zainteresowanie.',
                   title: 'Super Likes',
                   provider: _notifySuperlikesProvider,
+                  onChanged: NotificationPreferencesService.instance
+                      .setSuperlikesEnabled,
                 ),
                 const _SoftDivider(),
                 _ToggleTile(
                   icon: Icons.campaign_outlined,
+                  subtitle: 'Nowości, promocje i przypomnienia o aktywności.',
                   title: 'Marketing',
                   provider: _notifyMarketingProvider,
+                  onChanged:
+                      NotificationPreferencesService.instance.setMarketingEnabled,
                 ),
               ],
             ),
@@ -232,14 +370,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 _ToggleTile(
                   icon: Icons.location_on_outlined,
+                  subtitle: 'Ukryj dystans, jeśli chcesz zachować więcej prywatności.',
                   title: 'Pokazuj odległość',
                   provider: _showDistanceProvider,
+                  onChanged: PrivacyPreferencesService.instance.setShowDistance,
                 ),
                 const _SoftDivider(),
                 _ToggleTile(
                   icon: Icons.visibility_outlined,
+                  subtitle: 'Decyduj, czy inni widzą kiedy jesteś online.',
                   title: 'Pokazuj status aktywności',
                   provider: _showActivityProvider,
+                  onChanged: PrivacyPreferencesService.instance.setShowActivity,
                 ),
               ],
             ),
@@ -253,6 +395,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 _ActionTile(
                   icon: Icons.block,
+                  subtitle: 'Sprawdź listę zablokowanych kont i odblokuj je w razie potrzeby.',
                   title: 'Zablokowani użytkownicy',
                   trailing: Text(
                     '$_blockedCount',
@@ -277,15 +420,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 _ActionTile(
                   icon: Icons.help_outline,
+                  subtitle: 'Szybkie odpowiedzi na najczęstsze pytania o aplikację.',
                   title: 'FAQ',
                   onTap: () {},
                 ),
                 const _SoftDivider(),
                 _ActionTile(
                   icon: Icons.email_outlined,
+                  subtitle: 'Napisz do supportu, jeśli coś nie działa albo chcesz pomocy.',
                   title: 'Kontakt',
                   trailing: Text(
-                    'sparksupport@gmail.com',
+                    'sparksupportpolska@gmail.com',
                     style: GoogleFonts.outfit(
                       fontSize: 10,
                       color: AppColors.textHint,
@@ -296,6 +441,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const _SoftDivider(),
                 _ActionTile(
                   icon: Icons.bug_report_outlined,
+                  subtitle: 'Podeślij problem, a szybciej go namierzymy i poprawimy.',
                   title: 'Zgłoś błąd',
                   onTap: () {},
                 ),
@@ -540,6 +686,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              final authorized = await _authorizeSensitiveAction(context);
+              if (!authorized) return;
+              await AnalyticsService.instance.track('sign_out_confirmed');
               await ref.read(authActionsProvider.notifier).signOut();
               if (context.mounted) {
                 context.go(RoutePaths.splash);
@@ -588,7 +737,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              final authorized = await _authorizeSensitiveAction(context);
+              if (!authorized) return;
               try {
+                await AnalyticsService.instance.track('delete_account_started');
                 await Supabase.instance.client.rpc('fn_delete_account');
                 await ref.read(authActionsProvider.notifier).signOut();
                 if (context.mounted) {
@@ -735,6 +887,7 @@ class _ActionTile extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.trailing,
+    this.subtitle,
     this.titleColor,
     this.iconColor,
   });
@@ -743,6 +896,7 @@ class _ActionTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
   final Widget? trailing;
+  final String? subtitle;
   final Color? titleColor;
   final Color? iconColor;
 
@@ -765,16 +919,32 @@ class _ActionTile extends StatelessWidget {
             ),
             const Gap(AppDimensions.spacing12),
             Expanded(
-              child: Text(
-                title,
-                style: GoogleFonts.outfit(
-                  fontSize: 15,
-                  color: titleColor ?? AppColors.textPrimary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.outfit(
+                      fontSize: 15,
+                      color: titleColor ?? AppColors.textPrimary,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const Gap(2),
+                    Text(
+                      subtitle!,
+                      style: GoogleFonts.outfit(
+                        fontSize: 12,
+                        color: AppColors.textHint,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             if (trailing != null) ...[
-              trailing!,
+              Flexible(child: trailing!),
               const Gap(AppDimensions.spacing8),
             ],
             Icon(
@@ -791,18 +961,144 @@ class _ActionTile extends StatelessWidget {
 
 // ── Toggle Tile ──
 
+class _SettingsOverviewCard extends StatelessWidget {
+  const _SettingsOverviewCard({
+    required this.userEmail,
+    required this.isPremium,
+    required this.blockedCount,
+  });
+
+  final String userEmail;
+  final bool isPremium;
+  final int blockedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(alpha: 0.14),
+            AppColors.primary.withValues(alpha: 0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Konto i prywatność',
+            style: GoogleFonts.outfit(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const Gap(4),
+          Text(
+            userEmail.isEmpty
+                ? 'Sprawdź ustawienia bezpieczeństwa, powiadomień i prywatności.'
+                : userEmail,
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const Gap(14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _OverviewPill(
+                icon: Icons.workspace_premium,
+                label: isPremium ? 'Premium aktywny' : 'Plan darmowy',
+                highlighted: isPremium,
+              ),
+              _OverviewPill(
+                icon: Icons.block,
+                label: blockedCount == 0
+                    ? 'Brak blokad'
+                    : '$blockedCount zablokowanych',
+              ),
+              const _OverviewPill(
+                icon: Icons.shield_outlined,
+                label: 'Prywatność pod kontrolą',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverviewPill extends StatelessWidget {
+  const _OverviewPill({
+    required this.icon,
+    required this.label,
+    this.highlighted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlighted ? AppColors.primary : AppColors.textSecondary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? AppColors.primary.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: highlighted
+              ? AppColors.primary.withValues(alpha: 0.22)
+              : AppColors.divider,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const Gap(8),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ToggleTile extends ConsumerWidget {
   const _ToggleTile({
     required this.icon,
     required this.title,
     required this.provider,
     this.onChanged,
+    this.subtitle,
   });
 
   final IconData icon;
   final String title;
   final StateProvider<bool> provider;
   final ValueChanged<bool>? onChanged;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -814,18 +1110,36 @@ class _ToggleTile extends ConsumerWidget {
         vertical: AppDimensions.paddingS,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: AppColors.textSecondary, size: AppDimensions.iconM),
           const Gap(AppDimensions.spacing12),
           Expanded(
-            child: Text(
-              title,
-              style: GoogleFonts.outfit(
-                fontSize: 15,
-                color: AppColors.textPrimary,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const Gap(2),
+                  Text(
+                    subtitle!,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: AppColors.textHint,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+          const Gap(AppDimensions.spacing8),
           Switch(
             value: value,
             activeColor: AppColors.primary,

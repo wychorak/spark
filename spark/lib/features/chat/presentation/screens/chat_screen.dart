@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
+import 'package:spark/core/services/privacy_preferences_service.dart';
 import 'package:spark/shared/providers/auth_provider.dart';
 import 'package:spark/shared/providers/match_chat_provider.dart';
 import 'package:spark/shared/providers/supabase_provider.dart';
@@ -48,10 +49,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isFirstMessage = true;
   bool _checkingRequest = true;
   DateTime? _otherUserLastActive;
+  bool _showActivityStatus = true;
 
   String get _conversationId => widget.matchId;
 
   Color get _modeColor => AppColors.colorForMode(widget.matchMode);
+
+  bool get _canSendMessage =>
+      _textController.text.trim().isNotEmpty &&
+      _chatRequestStatus != ChatRequestStatus.pending &&
+      _chatRequestStatus != ChatRequestStatus.rejected;
 
   String get _activityStatus {
     final t = _otherUserLastActive;
@@ -66,11 +73,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _textController.addListener(_handleComposerChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(markMessagesReadProvider)(_conversationId);
       _checkChatRequest();
-      _fetchOtherUserActivity();
+      _loadPrivacyPreferences();
     });
+  }
+
+  void _handleComposerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadPrivacyPreferences() async {
+    final showActivity =
+        await PrivacyPreferencesService.instance.getShowActivity();
+    if (!mounted) return;
+    setState(() => _showActivityStatus = showActivity);
+    if (showActivity) {
+      await _fetchOtherUserActivity();
+    }
   }
 
   Future<void> _fetchOtherUserActivity() async {
@@ -149,6 +171,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _textController.removeListener(_handleComposerChanged);
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -196,13 +219,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ? matchRow['user2_id'] as String
           : matchRow['user1_id'] as String;
 
-      await client.from('chat_requests').insert({
-        'sender_id': user.id,
-        'receiver_id': otherUserId,
-        'conversation_id': _conversationId,
-        'message': message,
-        'status': 'pending',
-      });
+      await client.rpc(
+        'fn_submit_chat_request',
+        params: {
+          'p_receiver_id': otherUserId,
+          'p_message': message,
+          'p_conversation_id': _conversationId,
+        },
+      );
 
       setState(() {
         _chatRequestStatus = ChatRequestStatus.pending;
@@ -217,33 +241,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final user = ref.read(currentUserProvider);
       if (user == null) return;
 
-      await client
-          .from('chat_requests')
-          .update({'status': 'accepted'})
-          .eq('conversation_id', _conversationId)
-          .eq('receiver_id', user.id);
-
-      // Get the original message and send it as a real message
-      final requests = await client
-          .from('chat_requests')
-          .select()
-          .eq('conversation_id', _conversationId)
-          .eq('status', 'accepted')
-          .limit(1);
-
-      if (requests.isNotEmpty) {
-        final senderId = requests[0]['sender_id'] as String;
-        final message = requests[0]['message'] as String? ?? '';
-        if (message.isNotEmpty) {
-          await client.from('messages').insert({
-            'conversation_id': _conversationId,
-            'sender_id': senderId,
-            'content': message,
-            'message_type': 'text',
-            'is_read': false,
-          });
-        }
-      }
+      await client.rpc(
+        'fn_respond_to_chat_request',
+        params: {
+          'p_conversation_id': _conversationId,
+          'p_status': 'accepted',
+        },
+      );
 
       setState(() {
         _chatRequestStatus = ChatRequestStatus.accepted;
@@ -257,11 +261,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final user = ref.read(currentUserProvider);
       if (user == null) return;
 
-      await client
-          .from('chat_requests')
-          .update({'status': 'rejected'})
-          .eq('conversation_id', _conversationId)
-          .eq('receiver_id', user.id);
+      await client.rpc(
+        'fn_respond_to_chat_request',
+        params: {
+          'p_conversation_id': _conversationId,
+          'p_status': 'rejected',
+        },
+      );
 
       setState(() {
         _chatRequestStatus = ChatRequestStatus.rejected;
@@ -404,7 +410,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       'spam': 'Spam',
       'harassment': 'Nękanie',
       'fake_profile': 'Fałszywy profil',
-      'inappropriate': 'Nieodpowiednie treści',
+      'inappropriate_content': 'Nieodpowiednie treści',
       'other': 'Inne',
     };
 
@@ -450,7 +456,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             }),
             const Gap(12),
             Text(
-              'Kontakt: sparksupport@gmail.com',
+              'Kontakt: sparksupportpolska@gmail.com',
               style: GoogleFonts.outfit(
                 fontSize: 12,
                 color: AppColors.textHint,
@@ -750,7 +756,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                     const Gap(6),
-                    if (_activityStatus == 'Online')
+                    if (_showActivityStatus && _activityStatus == 'Online')
                       Container(
                         width: 8,
                         height: 8,
@@ -767,7 +773,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                   ],
                 ),
-                if (_activityStatus.isNotEmpty)
+                if (_showActivityStatus && _activityStatus.isNotEmpty)
                   Text(
                     _activityStatus,
                     style: GoogleFonts.outfit(
@@ -957,7 +963,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 const Gap(4),
                 Expanded(
-                  child: Container(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_isFirstMessage &&
+                          _chatRequestStatus == ChatRequestStatus.none)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6, left: 4),
+                          child: Text(
+                            'Pierwsza wiadomość trafi jako prośba o czat.',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: modeColor,
+                            ),
+                          ),
+                        ),
+                      Container(
                     decoration: BoxDecoration(
                       color: AppColors.background,
                       borderRadius:
@@ -975,7 +998,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         hintText: _chatRequestStatus ==
                                 ChatRequestStatus.pending
                             ? 'Oczekiwanie na akceptację...'
-                            : AppStrings.chatMessageHint,
+                            : _isFirstMessage
+                                ? 'Napisz pierwszą wiadomość...'
+                                : AppStrings.chatMessageHint,
                         hintStyle: GoogleFonts.outfit(
                           color: AppColors.textHint,
                           fontSize: 14,
@@ -991,28 +1016,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       textInputAction: TextInputAction.send,
                     ),
                   ),
+                    ],
+                  ),
                 ),
                 const Gap(8),
                 GestureDetector(
-                  onTap: (_chatRequestStatus != ChatRequestStatus.pending &&
-                          _chatRequestStatus != ChatRequestStatus.rejected)
-                      ? _sendMessage
-                      : null,
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: modeColor,
-                      boxShadow: [
-                        BoxShadow(
-                          color: modeColor.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                        ),
-                      ],
+                  onTap: _canSendMessage ? _sendMessage : null,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: _canSendMessage ? 1 : 0.45,
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: modeColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: modeColor.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _isFirstMessage &&
+                                _chatRequestStatus == ChatRequestStatus.none
+                            ? Icons.mark_chat_unread_rounded
+                            : Icons.send_rounded,
+                        color: AppColors.white,
+                        size: 20,
+                      ),
                     ),
-                    child: const Icon(Icons.send_rounded,
-                        color: AppColors.white, size: 20),
                   ),
                 ),
               ],

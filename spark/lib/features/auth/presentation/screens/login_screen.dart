@@ -15,6 +15,7 @@ import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/router/app_router.dart';
 import 'package:spark/shared/providers/auth_provider.dart';
 import 'package:spark/core/utils/error_helpers.dart';
+import 'package:spark/features/notifications/notification_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -87,6 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             .maybeSingle();
         if (!mounted) return;
         if (profile != null) {
+          await NotificationService.instance.init();
           context.go(RoutePaths.home);
         } else {
           context.go(RoutePaths.onboarding);
@@ -209,7 +211,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                   // Spark logo
                   Image.network(
-                    'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/APP%20images/spark%20logo.png',
+                    Supabase.instance.client.storage
+                        .from('APP images')
+                        .getPublicUrl('spark logo.png'),
                     height: 90,
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => Text(

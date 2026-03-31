@@ -5,11 +5,14 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/router/app_router.dart';
+import 'package:spark/core/services/analytics_service.dart';
+import 'package:spark/core/services/crash_reporting_service.dart';
 import 'package:spark/features/notifications/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -58,6 +61,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
+      try {
+        await Purchases.logIn(user.id);
+      } catch (_) {}
+      await AnalyticsService.instance.identifyUser(
+        userId: user.id,
+        email: user.email,
+      );
+      await CrashReportingService.instance.setUser(
+        userId: user.id,
+        email: user.email,
+      );
       try {
         final profile = await Supabase.instance.client
             .from('user_profiles')

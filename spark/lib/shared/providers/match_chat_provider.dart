@@ -2,9 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth_provider.dart';
 import 'supabase_provider.dart';
 
-const _photosBaseUrl =
-    'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/photos/';
-
 class MatchWithProfile {
   final String matchId;
   final String conversationId;
@@ -97,13 +94,16 @@ final matchesWithProfileProvider =
       if (!profileCache.containsKey(otherUserId)) {
         final profile = await client
             .from('user_profiles')
-            .select('id, display_name, modes')
+            .select('id, display_name, modes, account_status')
             .eq('id', otherUserId)
             .maybeSingle();
         profileCache[otherUserId] = profile ?? {};
       }
 
       final profile = profileCache[otherUserId]!;
+      if ((profile['account_status']?.toString() ?? 'active') != 'active') {
+        continue;
+      }
 
       final convRows = await client
           .from('conversations')
@@ -159,7 +159,7 @@ final matchesWithProfileProvider =
           final path = photoRows[0]['storage_path'] as String;
           photoUrl = path.startsWith('http')
               ? path
-              : '${_photosBaseUrl}$path';
+              : client.storage.from('photos').getPublicUrl(path);
         }
       } catch (_) {}
 
@@ -221,14 +221,15 @@ final sendMessageProvider =
   return (String conversationId, String content) async {
     if (user == null) return;
 
-    await client.from('messages').insert({
-      'conversation_id': conversationId,
-      'sender_id': user.id,
-      'content': content,
-      'message_type': 'text',
-      'is_read': false,
-    });
-    // last_message_at is updated automatically by trg_messages_update_conversation
+    await client.rpc(
+      'fn_send_message',
+      params: {
+        'p_conversation_id': conversationId,
+        'p_content': content,
+        'p_message_type': 'text',
+        'p_image_path': null,
+      },
+    );
   };
 });
 
@@ -323,12 +324,14 @@ final reportUserProvider = Provider<
         ? matchRow['user2_id'] as String
         : matchRow['user1_id'] as String;
 
-    await client.from('reports').insert({
-      'reporter_id': user.id,
-      'reported_id': otherUserId,
-      'reason': reason,
-      'description': description,
-    });
+    await client.rpc(
+      'fn_submit_report',
+      params: {
+        'p_reported_id': otherUserId,
+        'p_reason': reason,
+        'p_description': description,
+      },
+    );
   };
 });
 

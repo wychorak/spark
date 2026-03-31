@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:gap/gap.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
@@ -103,7 +104,9 @@ class _AgeGateScreenState extends ConsumerState<AgeGateScreen> {
 
                 // Logo
                 Image.network(
-                  'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/APP%20images/spark%20logo.png',
+                  Supabase.instance.client.storage
+                      .from('APP images')
+                      .getPublicUrl('spark logo.png'),
                   height: 70,
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),

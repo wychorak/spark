@@ -90,16 +90,20 @@ final profileByIdProvider =
     desiredInterests = cleaned.split(',').where((s) => s.isNotEmpty).toList();
   }
 
-  // Photos from storage
+  // Photos from metadata table so profile loading does not depend on bucket listing.
   final List<String> photoUrls = [];
   try {
-    final files = await client.storage
-        .from('photos')
-        .list(path: 'profiles/$userId');
-    for (final file in files) {
-      final url = client.storage
-          .from('photos')
-          .getPublicUrl('profiles/$userId/${file.name}');
+    final photoRows = await client
+        .from('user_photos')
+        .select('storage_path')
+        .eq('user_id', userId)
+        .order('position', ascending: true);
+    for (final row in photoRows as List) {
+      final path = row['storage_path']?.toString();
+      if (path == null || path.isEmpty) continue;
+      final url = path.startsWith('http')
+          ? path
+          : client.storage.from('photos').getPublicUrl(path);
       photoUrls.add(url);
     }
   } catch (_) {}

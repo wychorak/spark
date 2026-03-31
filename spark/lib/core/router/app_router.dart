@@ -1,5 +1,7 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/notifications/notification_service.dart';
 
 import '../../features/auth/presentation/screens/splash_screen.dart';
@@ -57,13 +59,95 @@ abstract final class RouteNames {
   static const String photoVerification = 'photoVerification';
 }
 
+bool _isAuthPath(String path) {
+  return path == RoutePaths.ageGate ||
+      path == RoutePaths.login ||
+      path == RoutePaths.register;
+}
+
+bool _requiresAuth(String path) {
+  return path == RoutePaths.home ||
+      path == RoutePaths.discovery ||
+      path == RoutePaths.matches ||
+      path == RoutePaths.chat ||
+      path == RoutePaths.profile ||
+      path == RoutePaths.settings ||
+      path == RoutePaths.paywall ||
+      path == RoutePaths.editProfile ||
+      path == RoutePaths.photoVerification ||
+      path.startsWith('/chat/') ||
+      path.startsWith('/profile/');
+}
+
+bool _requiresVerification(String path) {
+  return path == RoutePaths.home ||
+      path == RoutePaths.discovery ||
+      path == RoutePaths.matches ||
+      path == RoutePaths.chat ||
+      path.startsWith('/chat/');
+}
+
 // ─────────────── Router Provider ───────────────
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  Widget buildHomeTab(BuildContext context, int tabIndex) {
+    ProviderScope.containerOf(context, listen: false)
+        .read(homeTabProvider.notifier)
+        .state = tabIndex;
+    return const HomeScreen();
+  }
+
   return GoRouter(
     navigatorKey: NotificationService.navigatorKey,
     initialLocation: RoutePaths.splash,
     debugLogDiagnostics: false,
+    redirect: (context, state) async {
+      final path = state.uri.path;
+      final user = Supabase.instance.client.auth.currentUser;
+
+      if (user == null) {
+        if (_requiresAuth(path)) {
+          return RoutePaths.login;
+        }
+        return null;
+      }
+
+      Map<String, dynamic>? profile;
+      try {
+        profile = await Supabase.instance.client
+            .from('user_profiles')
+            .select('id, is_verified')
+            .eq('id', user.id)
+            .maybeSingle();
+      } catch (_) {}
+
+      final hasProfile = profile != null;
+      final isVerified = profile?['is_verified'] == true;
+
+      if (!hasProfile && path != RoutePaths.onboarding) {
+        return RoutePaths.onboarding;
+      }
+
+      if (hasProfile && path == RoutePaths.onboarding) {
+        return isVerified ? RoutePaths.home : RoutePaths.photoVerification;
+      }
+
+      if (_isAuthPath(path) || path == RoutePaths.ageGate) {
+        return isVerified ? RoutePaths.home : RoutePaths.photoVerification;
+      }
+
+      if (!isVerified &&
+          _requiresVerification(path) &&
+          path != RoutePaths.photoVerification) {
+        return RoutePaths.photoVerification;
+      }
+
+      if (isVerified && path == RoutePaths.photoVerification) {
+        return RoutePaths.home;
+      }
+
+      return null;
+    },
     routes: [
       GoRoute(
         path: RoutePaths.splash,
@@ -94,6 +178,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.home,
         name: RouteNames.home,
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.discovery,
+        name: RouteNames.discovery,
+        builder: (context, state) => buildHomeTab(context, 0),
+      ),
+      GoRoute(
+        path: RoutePaths.matches,
+        name: RouteNames.matches,
+        builder: (context, state) => buildHomeTab(context, 1),
+      ),
+      GoRoute(
+        path: RoutePaths.chat,
+        name: RouteNames.chat,
+        builder: (context, state) => buildHomeTab(context, 2),
+      ),
+      GoRoute(
+        path: RoutePaths.profile,
+        name: RouteNames.profile,
+        builder: (context, state) => buildHomeTab(context, 3),
       ),
       GoRoute(
         path: RoutePaths.settings,

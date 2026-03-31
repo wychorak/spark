@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -123,6 +122,8 @@ class _ProfileBody extends ConsumerWidget {
               // Mode + settings row
               _TopRow(profile: profile, gradStart: gradStart, gradEnd: gradEnd),
               const Gap(20),
+              _ProfileCompletionCard(profile: profile),
+              const Gap(16),
               // Stats
               _StatsRow(isPremium: profile.isPremium),
               const Gap(16),
@@ -577,6 +578,121 @@ class _TopRow extends StatelessWidget {
 }
 
 // ── Stats Row ──
+
+class _ProfileCompletionCard extends StatelessWidget {
+  const _ProfileCompletionCard({required this.profile});
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    var score = 0;
+
+    if (profile.photos.length >= 2) score += 25;
+    if (profile.bio != null && profile.bio!.trim().isNotEmpty) score += 20;
+    if (profile.interests.length >= 3) score += 20;
+    if (profile.isVerified) score += 20;
+    if (profile.city != null && profile.city!.trim().isNotEmpty) score += 15;
+
+    final completion = (score / 100).clamp(0.0, 1.0);
+    final nextStep = <String>[
+      if (profile.photos.length < 2) 'dodaj jeszcze jedno zdjęcie',
+      if (profile.bio == null || profile.bio!.trim().isEmpty) 'uzupełnij bio',
+      if (profile.interests.length < 3) 'wybierz więcej zainteresowań',
+      if (!profile.isVerified) 'zweryfikuj profil',
+      if (profile.city == null || profile.city!.trim().isEmpty) 'dodaj miasto',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.07),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: AppColors.primary,
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Kompletność profilu',
+                      style: GoogleFonts.outfit(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const Gap(2),
+                    Text(
+                      score >= 85
+                          ? 'Wygląda dobrze i budzi większe zaufanie.'
+                          : 'Kilka drobnych uzupełnień może zwiększyć liczbę polubień.',
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '$score%',
+                style: GoogleFonts.outfit(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+          const Gap(14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: completion,
+              minHeight: 10,
+              backgroundColor: AppColors.background,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+          ),
+          if (nextStep.isNotEmpty) ...[
+            const Gap(12),
+            Text(
+              'Największy szybki zysk: ${nextStep.first}.',
+              style: GoogleFonts.outfit(
+                fontSize: 13,
+                color: AppColors.textHint,
+              ),
+            ),
+          ],
+        ],
+      ),
+    ).animate().fadeIn(delay: 120.ms, duration: 300.ms);
+  }
+}
 
 class _StatsRow extends StatelessWidget {
   const _StatsRow({required this.isPremium});
@@ -1186,26 +1302,7 @@ class _PreviewCardButton extends StatelessWidget {
   }
 
   void _showPreview(BuildContext context) {
-    final photos = <String>[];
-    try {
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId != null) {
-        Supabase.instance.client.storage
-            .from('photos')
-            .list(path: 'profiles/$userId')
-            .then((files) {
-          final base = 'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/photos/';
-          for (final f in files) {
-            photos.add('${base}profiles/$userId/${f.name}');
-          }
-          _openPreviewSheet(context, photos);
-        });
-      } else {
-        _openPreviewSheet(context, photos);
-      }
-    } catch (_) {
-      _openPreviewSheet(context, photos);
-    }
+    _openPreviewSheet(context, profile.photoUrls);
   }
 
   void _openPreviewSheet(BuildContext context, List<String> photos) {

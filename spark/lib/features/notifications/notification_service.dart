@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:spark/core/services/notification_preferences_service.dart';
 
 // ─── Background handler (top-level, required by Firebase) ───
 @pragma('vm:entry-point')
@@ -21,6 +24,10 @@ class NotificationService {
 
   final _fcm = FirebaseMessaging.instance;
   final _localNotifications = FlutterLocalNotificationsPlugin();
+  StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<RemoteMessage>? _onMessageSub;
+  StreamSubscription<RemoteMessage>? _onMessageOpenedSub;
+  bool _initialized = false;
 
   // Android notification channel
   static const _channel = AndroidNotificationChannel(
@@ -36,6 +43,11 @@ class NotificationService {
   static final navigatorKey = GlobalKey<NavigatorState>();
 
   Future<void> init() async {
+    if (_initialized) {
+      await _registerToken();
+      return;
+    }
+
     // 1. Request permission (iOS asks user, Android 13+ asks user)
     final settings = await _fcm.requestPermission(
       alert: true,
@@ -76,17 +88,22 @@ class NotificationService {
     await _registerToken();
 
     // 6. Listen for token refreshes
-    _fcm.onTokenRefresh.listen(_saveToken);
+    await _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen(_saveToken);
 
     // 7. Foreground message handler
-    FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+    await _onMessageSub?.cancel();
+    _onMessageSub = FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
     // 8. App opened from background notification
-    FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationOpenedApp);
+    await _onMessageOpenedSub?.cancel();
+    _onMessageOpenedSub =
+        FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationOpenedApp);
 
     // 9. App opened from terminated state
     final initial = await _fcm.getInitialMessage();
     if (initial != null) _onNotificationOpenedApp(initial);
+    _initialized = true;
   }
 
   // ── Token management ─────────────────────────────────────
@@ -106,12 +123,17 @@ class NotificationService {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
     try {
-      await Supabase.instance.client.from('push_tokens').upsert({
+      final platform = Platform.isIOS ? 'ios' : 'android';
+      await Supabase.instance.client
+          .from('push_tokens')
+          .delete()
+          .eq('user_id', userId)
+          .eq('platform', platform);
+      await Supabase.instance.client.from('push_tokens').insert({
         'user_id': userId,
         'token': token,
-        'platform': Platform.isIOS ? 'ios' : 'android',
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }, onConflict: 'user_id');
+        'platform': platform,
+      });
       debugPrint('[FCM] Token saved to Supabase');
     } catch (e) {
       debugPrint('[FCM] Token save error: $e');
@@ -127,6 +149,7 @@ class NotificationService {
           .from('push_tokens')
           .delete()
           .eq('user_id', userId);
+      _initialized = false;
     } catch (e) {
       debugPrint('[FCM] Token delete error: $e');
     }
@@ -134,12 +157,16 @@ class NotificationService {
 
   // ── Message handlers ─────────────────────────────────────
 
-  void _onForegroundMessage(RemoteMessage message) {
+  Future<void> _onForegroundMessage(RemoteMessage message) async {
     debugPrint('[FCM] Foreground: ${message.notification?.title}');
     final notification = message.notification;
     if (notification == null) return;
+    final type = message.data['type'] as String? ?? 'general';
+    final isEnabled =
+        await NotificationPreferencesService.instance.isEnabledForType(type);
+    if (!isEnabled) return;
 
-    _localNotifications.show(
+    await _localNotifications.show(
       notification.hashCode,
       notification.title,
       notification.body,
@@ -194,12 +221,14 @@ class NotificationService {
           final name = data['name'] as String? ?? '';
           final photo = data['photo'] as String? ?? '';
           final mode = data['mode'] as String? ?? 'relationship';
+          final uid = data['uid'] as String? ?? '';
           context.push(
-            '/chat/$id?name=${Uri.encodeComponent(name)}&photo=${Uri.encodeComponent(photo)}&mode=$mode',
+            '/chat/$id?name=${Uri.encodeComponent(name)}&photo=${Uri.encodeComponent(photo)}&mode=$mode&uid=${Uri.encodeComponent(uid)}',
           );
         }
         break;
       case 'super_like':
+      case 'superlike':
         context.go('/home/matches');
         break;
       default:

@@ -16,9 +16,13 @@ CREATE TYPE gender_type AS ENUM ('female', 'male', 'nonbinary');
 CREATE TYPE relationship_mode AS ENUM ('relationship', 'friends', 'fwb');
 CREATE TYPE swipe_type AS ENUM ('like', 'pass', 'superlike');
 CREATE TYPE report_reason AS ENUM ('fake_profile', 'inappropriate_content', 'harassment', 'underage', 'spam', 'other');
-CREATE TYPE verification_status AS ENUM ('pending', 'verified', 'rejected');
-CREATE TYPE subscription_plan AS ENUM ('monthly', 'yearly');
+CREATE TYPE moderation_status AS ENUM ('pending', 'in_review', 'resolved', 'dismissed');
+CREATE TYPE verification_status AS ENUM ('pending', 'in_review', 'verified', 'rejected');
+CREATE TYPE subscription_plan AS ENUM ('weekly', 'monthly', 'yearly');
+CREATE TYPE subscription_status AS ENUM ('active', 'grace_period', 'billing_issue', 'expired', 'cancelled');
+CREATE TYPE account_status AS ENUM ('active', 'under_review', 'suspended', 'banned');
 CREATE TYPE message_type AS ENUM ('text', 'image', 'gif');
+CREATE TYPE chat_request_status AS ENUM ('pending', 'accepted', 'rejected');
 
 -- ============================================================
 -- INTERESTS (30 predefined)
@@ -51,14 +55,27 @@ CREATE TABLE user_profiles (
   gender gender_type NOT NULL,
   modes relationship_mode[] NOT NULL DEFAULT '{relationship}',
   location GEOGRAPHY(POINT, 4326),
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
   city TEXT,
+  desired_interests TEXT[] DEFAULT '{}',
+  instagram_handle TEXT,
+  tiktok_handle TEXT,
+  snapchat_handle TEXT,
+  profile_gradient_start TEXT,
+  profile_gradient_end TEXT,
   spotify_track_uri TEXT,
   spotify_preview_url TEXT,
   spotify_track_name TEXT,
   spotify_artist_name TEXT,
+  spotify_artwork_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
+  is_admin BOOLEAN DEFAULT FALSE,
   is_verified BOOLEAN DEFAULT FALSE,
   is_premium BOOLEAN DEFAULT FALSE,
+  account_status account_status NOT NULL DEFAULT 'active',
+  shadow_ban_until TIMESTAMPTZ,
+  moderation_notes TEXT,
   last_active_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -72,6 +89,7 @@ CREATE INDEX idx_user_profiles_modes ON user_profiles USING GIN (modes);
 CREATE INDEX idx_user_profiles_gender ON user_profiles (gender);
 CREATE INDEX idx_user_profiles_active ON user_profiles (is_active) WHERE is_active = TRUE;
 CREATE INDEX idx_user_profiles_last_active ON user_profiles (last_active_at DESC);
+CREATE INDEX idx_user_profiles_account_status ON user_profiles (account_status);
 
 -- ============================================================
 -- USER PHOTOS
@@ -184,6 +202,29 @@ CREATE INDEX idx_messages_conversation ON messages (conversation_id, created_at 
 CREATE INDEX idx_messages_sender ON messages (sender_id);
 
 -- ============================================================
+-- CHAT REQUESTS
+-- ============================================================
+
+CREATE TABLE chat_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  sender_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  receiver_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  message TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 500),
+  status chat_request_status NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  CHECK (sender_id <> receiver_id)
+);
+
+CREATE INDEX idx_chat_requests_sender ON chat_requests (sender_id, created_at DESC);
+CREATE INDEX idx_chat_requests_receiver ON chat_requests (receiver_id, created_at DESC);
+CREATE UNIQUE INDEX idx_chat_requests_conversation
+  ON chat_requests (conversation_id)
+  WHERE conversation_id IS NOT NULL;
+
+-- ============================================================
 -- BLOCKS
 -- ============================================================
 
@@ -209,10 +250,16 @@ CREATE TABLE reports (
   reported_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
   reason report_reason NOT NULL,
   description TEXT,
+  status moderation_status NOT NULL DEFAULT 'pending',
+  reviewed_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  resolved_at TIMESTAMPTZ,
+  resolution_notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_reports_reported ON reports (reported_id);
+CREATE INDEX idx_reports_status ON reports (status);
 
 -- ============================================================
 -- USER VERIFICATIONS
@@ -223,11 +270,15 @@ CREATE TABLE user_verifications (
   user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
   selfie_path TEXT NOT NULL,
   status verification_status DEFAULT 'pending',
+  reviewed_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  review_notes TEXT,
+  rejection_reason TEXT,
   reviewed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_verifications_user ON user_verifications (user_id);
+CREATE INDEX idx_verifications_status ON user_verifications (status);
 
 -- ============================================================
 -- PREMIUM SUBSCRIPTIONS
@@ -239,13 +290,20 @@ CREATE TABLE premium_subscriptions (
   plan subscription_plan NOT NULL,
   store_product_id TEXT NOT NULL,
   store_transaction_id TEXT,
+  provider TEXT NOT NULL DEFAULT 'revenuecat',
+  entitlement_id TEXT NOT NULL DEFAULT 'premium',
   starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL,
+  status subscription_status NOT NULL DEFAULT 'active',
   is_active BOOLEAN DEFAULT TRUE,
+  auto_renew BOOLEAN DEFAULT TRUE,
+  environment TEXT NOT NULL DEFAULT 'production',
+  last_synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_subscriptions_user ON premium_subscriptions (user_id) WHERE is_active = TRUE;
+CREATE INDEX idx_subscriptions_status ON premium_subscriptions (status);
 
 -- ============================================================
 -- DAILY LIMITS
@@ -307,6 +365,10 @@ CREATE TRIGGER trg_user_profiles_updated
 
 CREATE TRIGGER trg_user_preferences_updated
   BEFORE UPDATE ON user_preferences
+  FOR EACH ROW EXECUTE FUNCTION fn_update_timestamp();
+
+CREATE TRIGGER trg_chat_requests_updated
+  BEFORE UPDATE ON chat_requests
   FOR EACH ROW EXECUTE FUNCTION fn_update_timestamp();
 
 -- Match check trigger
@@ -420,6 +482,853 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+CREATE OR REPLACE FUNCTION fn_submit_swipe_action(
+  p_target_id UUID,
+  p_action swipe_type
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_sender_status account_status;
+  v_target_status account_status;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF auth.uid() = p_target_id THEN
+    RAISE EXCEPTION 'Cannot swipe yourself';
+  END IF;
+
+  SELECT account_status INTO v_sender_status
+  FROM user_profiles
+  WHERE id = auth.uid();
+
+  SELECT account_status INTO v_target_status
+  FROM user_profiles
+  WHERE id = p_target_id;
+
+  IF COALESCE(v_sender_status, 'active') <> 'active' THEN
+    RAISE EXCEPTION 'Sender account is not active';
+  END IF;
+
+  IF COALESCE(v_target_status, 'active') <> 'active' THEN
+    RAISE EXCEPTION 'Target account is not active';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM blocks
+    WHERE (blocker_id = auth.uid() AND blocked_id = p_target_id)
+       OR (blocker_id = p_target_id AND blocked_id = auth.uid())
+  ) THEN
+    RAISE EXCEPTION 'Cannot swipe blocked user';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM swipe_actions
+    WHERE user_id = auth.uid()
+      AND target_id = p_target_id
+  ) THEN
+    RETURN TRUE;
+  END IF;
+
+  IF NOT fn_increment_daily_limit(auth.uid(), p_action) THEN
+    RETURN FALSE;
+  END IF;
+
+  INSERT INTO swipe_actions (
+    user_id,
+    target_id,
+    action
+  ) VALUES (
+    auth.uid(),
+    p_target_id,
+    p_action
+  );
+
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_upsert_profile(
+  p_display_name TEXT,
+  p_born_at DATE,
+  p_gender gender_type,
+  p_bio TEXT DEFAULT NULL,
+  p_modes relationship_mode[] DEFAULT '{relationship}',
+  p_city TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  INSERT INTO user_profiles (
+    id,
+    display_name,
+    born_at,
+    gender,
+    bio,
+    modes,
+    city
+  )
+  VALUES (
+    auth.uid(),
+    p_display_name,
+    p_born_at,
+    p_gender,
+    NULLIF(p_bio, ''),
+    COALESCE(p_modes, '{relationship}'::relationship_mode[]),
+    NULLIF(p_city, '')
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET
+    display_name = EXCLUDED.display_name,
+    born_at = EXCLUDED.born_at,
+    gender = EXCLUDED.gender,
+    bio = EXCLUDED.bio,
+    modes = EXCLUDED.modes,
+    city = EXCLUDED.city;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_save_user_interests(p_interest_names TEXT[])
+RETURNS VOID AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  DELETE FROM user_interests
+  WHERE user_id = auth.uid();
+
+  INSERT INTO user_interests (user_id, interest_id)
+  SELECT auth.uid(), i.id
+  FROM interests i
+  WHERE i.name = ANY(COALESCE(p_interest_names, '{}'::TEXT[]));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_save_user_photo(
+  p_storage_path TEXT,
+  p_position SMALLINT,
+  p_is_primary BOOLEAN DEFAULT FALSE
+)
+RETURNS VOID AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_is_primary THEN
+    UPDATE user_photos
+    SET is_primary = FALSE
+    WHERE user_id = auth.uid();
+  END IF;
+
+  INSERT INTO user_photos (
+    user_id,
+    storage_path,
+    position,
+    is_primary
+  )
+  VALUES (
+    auth.uid(),
+    p_storage_path,
+    p_position,
+    p_is_primary
+  )
+  ON CONFLICT (user_id, position) DO UPDATE
+  SET
+    storage_path = EXCLUDED.storage_path,
+    is_primary = EXCLUDED.is_primary;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_update_user_location(
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  city_name TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE user_profiles
+  SET
+    latitude = lat,
+    longitude = lng,
+    city = COALESCE(NULLIF(TRIM(city_name), ''), city),
+    location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
+  WHERE id = auth.uid();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_delete_account()
+RETURNS BOOLEAN AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  DELETE FROM auth.users
+  WHERE id = auth.uid();
+
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_submit_report(
+  p_reported_id UUID,
+  p_reason report_reason,
+  p_description TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+  v_report_id UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF auth.uid() = p_reported_id THEN
+    RAISE EXCEPTION 'Cannot report yourself';
+  END IF;
+
+  SELECT id
+  INTO v_report_id
+  FROM reports
+  WHERE reporter_id = auth.uid()
+    AND reported_id = p_reported_id
+    AND reason = p_reason
+    AND status IN ('pending', 'in_review')
+    AND created_at > NOW() - INTERVAL '24 hours'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF v_report_id IS NOT NULL THEN
+    RETURN v_report_id;
+  END IF;
+
+  INSERT INTO reports (
+    reporter_id,
+    reported_id,
+    reason,
+    description
+  ) VALUES (
+    auth.uid(),
+    p_reported_id,
+    p_reason,
+    NULLIF(TRIM(p_description), '')
+  )
+  RETURNING id INTO v_report_id;
+
+  RETURN v_report_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_submit_photo_verification(
+  p_selfie_path TEXT
+)
+RETURNS UUID AS $$
+DECLARE
+  v_verification_id UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT id
+  INTO v_verification_id
+  FROM user_verifications
+  WHERE user_id = auth.uid()
+    AND status IN ('pending', 'in_review')
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF v_verification_id IS NULL THEN
+    INSERT INTO user_verifications (
+      user_id,
+      selfie_path,
+      status
+    ) VALUES (
+      auth.uid(),
+      p_selfie_path,
+      'pending'
+    )
+    RETURNING id INTO v_verification_id;
+  ELSE
+    UPDATE user_verifications
+    SET selfie_path = p_selfie_path,
+        status = 'pending',
+        reviewed_at = NULL,
+        reviewed_by = NULL,
+        review_notes = NULL,
+        rejection_reason = NULL
+    WHERE id = v_verification_id;
+  END IF;
+
+  UPDATE user_profiles
+  SET is_verified = FALSE
+  WHERE id = auth.uid();
+
+  RETURN v_verification_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_is_admin(
+  p_user_id UUID DEFAULT auth.uid()
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+BEGIN
+  SELECT is_admin
+  INTO v_is_admin
+  FROM user_profiles
+  WHERE id = p_user_id;
+
+  RETURN COALESCE(v_is_admin, FALSE);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_submit_chat_request(
+  p_receiver_id UUID,
+  p_message TEXT,
+  p_conversation_id UUID DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+  v_request_id UUID;
+  v_sender_status account_status;
+  v_receiver_status account_status;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF auth.uid() = p_receiver_id THEN
+    RAISE EXCEPTION 'Cannot create chat request to yourself';
+  END IF;
+
+  SELECT account_status INTO v_sender_status
+  FROM user_profiles
+  WHERE id = auth.uid();
+
+  SELECT account_status INTO v_receiver_status
+  FROM user_profiles
+  WHERE id = p_receiver_id;
+
+  IF COALESCE(v_sender_status, 'active') <> 'active' THEN
+    RAISE EXCEPTION 'Sender account is not active';
+  END IF;
+
+  IF COALESCE(v_receiver_status, 'active') <> 'active' THEN
+    RAISE EXCEPTION 'Receiver account is not active';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM blocks
+    WHERE (blocker_id = auth.uid() AND blocked_id = p_receiver_id)
+       OR (blocker_id = p_receiver_id AND blocked_id = auth.uid())
+  ) THEN
+    RAISE EXCEPTION 'Cannot create chat request for blocked relationship';
+  END IF;
+
+  IF (
+    SELECT COUNT(*)
+    FROM chat_requests
+    WHERE sender_id = auth.uid()
+      AND created_at > NOW() - INTERVAL '10 minutes'
+  ) >= 5 THEN
+    RAISE EXCEPTION 'Too many chat requests, try again later';
+  END IF;
+
+  SELECT id
+  INTO v_request_id
+  FROM chat_requests
+  WHERE sender_id = auth.uid()
+    AND receiver_id = p_receiver_id
+    AND status = 'pending'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF v_request_id IS NOT NULL THEN
+    RETURN v_request_id;
+  END IF;
+
+  INSERT INTO chat_requests (
+    sender_id,
+    receiver_id,
+    conversation_id,
+    message,
+    status
+  ) VALUES (
+    auth.uid(),
+    p_receiver_id,
+    p_conversation_id,
+    LEFT(TRIM(p_message), 500),
+    'pending'
+  )
+  RETURNING id INTO v_request_id;
+
+  RETURN v_request_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_send_message(
+  p_conversation_id UUID,
+  p_content TEXT,
+  p_message_type message_type DEFAULT 'text',
+  p_image_path TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+  v_message_id UUID;
+  v_sender_status account_status;
+  v_clean_content TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT account_status
+  INTO v_sender_status
+  FROM user_profiles
+  WHERE id = auth.uid();
+
+  IF COALESCE(v_sender_status, 'active') <> 'active' THEN
+    RAISE EXCEPTION 'Sender account is not active';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM conversations c
+    JOIN matches m ON m.id = c.match_id
+    WHERE c.id = p_conversation_id
+      AND m.is_active = TRUE
+      AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
+  ) THEN
+    RAISE EXCEPTION 'Conversation not accessible';
+  END IF;
+
+  IF (
+    SELECT COUNT(*)
+    FROM messages
+    WHERE sender_id = auth.uid()
+      AND created_at > NOW() - INTERVAL '1 minute'
+  ) >= 12 THEN
+    RAISE EXCEPTION 'Too many messages sent, try again later';
+  END IF;
+
+  v_clean_content := NULLIF(TRIM(p_content), '');
+
+  IF p_message_type = 'text' AND v_clean_content IS NULL THEN
+    RAISE EXCEPTION 'Message content is required';
+  END IF;
+
+  IF v_clean_content IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM messages
+      WHERE conversation_id = p_conversation_id
+        AND sender_id = auth.uid()
+        AND content = v_clean_content
+        AND created_at > NOW() - INTERVAL '30 seconds'
+    ) THEN
+    RAISE EXCEPTION 'Duplicate message detected';
+  END IF;
+
+  INSERT INTO messages (
+    conversation_id,
+    sender_id,
+    content,
+    message_type,
+    image_path,
+    is_read
+  ) VALUES (
+    p_conversation_id,
+    auth.uid(),
+    v_clean_content,
+    p_message_type,
+    p_image_path,
+    FALSE
+  )
+  RETURNING id INTO v_message_id;
+
+  RETURN v_message_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_respond_to_chat_request(
+  p_conversation_id UUID,
+  p_status chat_request_status
+)
+RETURNS UUID AS $$
+DECLARE
+  v_request chat_requests%ROWTYPE;
+  v_message_id UUID;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_status NOT IN ('accepted', 'rejected') THEN
+    RAISE EXCEPTION 'Unsupported chat request status';
+  END IF;
+
+  SELECT *
+  INTO v_request
+  FROM chat_requests
+  WHERE conversation_id = p_conversation_id
+    AND receiver_id = auth.uid()
+    AND status = 'pending'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'No pending chat request found';
+  END IF;
+
+  UPDATE chat_requests
+  SET status = p_status,
+      updated_at = NOW()
+  WHERE id = v_request.id;
+
+  IF p_status = 'accepted' AND NULLIF(TRIM(v_request.message), '') IS NOT NULL THEN
+    INSERT INTO messages (
+      conversation_id,
+      sender_id,
+      content,
+      message_type,
+      is_read
+    ) VALUES (
+      p_conversation_id,
+      v_request.sender_id,
+      TRIM(v_request.message),
+      'text',
+      FALSE
+    )
+    RETURNING id INTO v_message_id;
+  END IF;
+
+  RETURN v_message_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_review_report(
+  p_report_id UUID,
+  p_status moderation_status,
+  p_resolution_notes TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  IF NOT fn_is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  UPDATE reports
+  SET status = p_status,
+      reviewed_by = auth.uid(),
+      reviewed_at = NOW(),
+      resolved_at = CASE
+        WHEN p_status IN ('resolved', 'dismissed') THEN NOW()
+        ELSE NULL
+      END,
+      resolution_notes = NULLIF(TRIM(p_resolution_notes), '')
+  WHERE id = p_report_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_get_support_dashboard()
+RETURNS TABLE (
+  pending_reports BIGINT,
+  pending_verifications BIGINT,
+  under_review_accounts BIGINT,
+  active_premium BIGINT,
+  open_chat_requests BIGINT
+) AS $$
+BEGIN
+  IF NOT fn_is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    (SELECT COUNT(*) FROM reports WHERE status IN ('pending', 'in_review')),
+    (SELECT COUNT(*) FROM user_verifications WHERE status IN ('pending', 'in_review')),
+    (SELECT COUNT(*) FROM user_profiles WHERE account_status = 'under_review'),
+    (SELECT COUNT(*) FROM premium_subscriptions WHERE is_active = TRUE AND status IN ('active', 'grace_period')),
+    (SELECT COUNT(*) FROM chat_requests WHERE status = 'pending');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_get_moderation_queue(
+  p_limit INT DEFAULT 50
+)
+RETURNS TABLE (
+  queue_type TEXT,
+  item_id UUID,
+  user_id UUID,
+  created_at TIMESTAMPTZ,
+  status TEXT,
+  summary TEXT
+) AS $$
+BEGIN
+  IF NOT fn_is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  RETURN QUERY
+  SELECT *
+  FROM (
+    SELECT
+      'report'::TEXT AS queue_type,
+      r.id AS item_id,
+      r.reported_id AS user_id,
+      r.created_at,
+      r.status::TEXT AS status,
+      COALESCE(r.description, r.reason::TEXT) AS summary
+    FROM reports r
+    WHERE r.status IN ('pending', 'in_review')
+
+    UNION ALL
+
+    SELECT
+      'verification'::TEXT AS queue_type,
+      uv.id AS item_id,
+      uv.user_id,
+      uv.created_at,
+      uv.status::TEXT AS status,
+      COALESCE(uv.review_notes, uv.selfie_path) AS summary
+    FROM user_verifications uv
+    WHERE uv.status IN ('pending', 'in_review')
+  ) queue_items
+  ORDER BY created_at DESC
+  LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_review_verification(
+  p_verification_id UUID,
+  p_status verification_status,
+  p_review_notes TEXT DEFAULT NULL,
+  p_rejection_reason TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+DECLARE
+  v_user_id UUID;
+BEGIN
+  IF NOT fn_is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  SELECT user_id
+  INTO v_user_id
+  FROM user_verifications
+  WHERE id = p_verification_id;
+
+  UPDATE user_verifications
+  SET status = p_status,
+      reviewed_by = auth.uid(),
+      reviewed_at = NOW(),
+      review_notes = NULLIF(TRIM(p_review_notes), ''),
+      rejection_reason = CASE
+        WHEN p_status = 'rejected' THEN NULLIF(TRIM(p_rejection_reason), '')
+        ELSE NULL
+      END
+  WHERE id = p_verification_id;
+
+  IF v_user_id IS NOT NULL THEN
+    UPDATE user_profiles
+    SET is_verified = (p_status = 'verified')
+    WHERE id = v_user_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_set_account_status(
+  p_user_id UUID,
+  p_status account_status,
+  p_shadow_ban_until TIMESTAMPTZ DEFAULT NULL,
+  p_moderation_notes TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  IF NOT fn_is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  UPDATE user_profiles
+  SET account_status = p_status,
+      shadow_ban_until = p_shadow_ban_until,
+      moderation_notes = NULLIF(TRIM(p_moderation_notes), ''),
+      is_active = (p_status <> 'banned')
+  WHERE id = p_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_run_maintenance()
+RETURNS VOID AS $$
+BEGIN
+  UPDATE premium_subscriptions
+  SET is_active = FALSE,
+      status = 'expired',
+      last_synced_at = NOW()
+  WHERE is_active = TRUE
+    AND status IN ('active', 'grace_period', 'billing_issue')
+    AND expires_at <= NOW();
+
+  UPDATE user_profiles up
+  SET is_premium = FALSE
+  WHERE up.is_premium = TRUE
+    AND NOT EXISTS (
+      SELECT 1
+      FROM premium_subscriptions ps
+      WHERE ps.user_id = up.id
+        AND ps.is_active = TRUE
+        AND ps.status IN ('active', 'grace_period')
+        AND ps.expires_at > NOW()
+    );
+
+  UPDATE chat_requests
+  SET status = 'rejected',
+      updated_at = NOW()
+  WHERE status = 'pending'
+    AND created_at < NOW() - INTERVAL '14 days';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_sync_premium_subscription(
+  p_plan subscription_plan,
+  p_store_product_id TEXT,
+  p_expires_at TIMESTAMPTZ,
+  p_store_transaction_id TEXT DEFAULT NULL,
+  p_provider TEXT DEFAULT 'revenuecat',
+  p_entitlement_id TEXT DEFAULT 'premium',
+  p_status subscription_status DEFAULT 'active',
+  p_auto_renew BOOLEAN DEFAULT TRUE,
+  p_environment TEXT DEFAULT 'production'
+)
+RETURNS UUID AS $$
+DECLARE
+  v_subscription_id UUID;
+  v_is_premium BOOLEAN;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE premium_subscriptions
+  SET is_active = FALSE,
+      status = CASE
+        WHEN status IN ('cancelled', 'expired') THEN status
+        ELSE 'expired'
+      END,
+      last_synced_at = NOW()
+  WHERE user_id = auth.uid()
+    AND is_active = TRUE
+    AND (
+      p_store_transaction_id IS NULL
+      OR COALESCE(store_transaction_id, '') <> COALESCE(p_store_transaction_id, '')
+    );
+
+  SELECT id
+  INTO v_subscription_id
+  FROM premium_subscriptions
+  WHERE user_id = auth.uid()
+    AND (
+      (p_store_transaction_id IS NOT NULL AND store_transaction_id = p_store_transaction_id)
+      OR (
+        p_store_transaction_id IS NULL
+        AND store_product_id = p_store_product_id
+        AND is_active = TRUE
+      )
+    )
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  v_is_premium := p_status IN ('active', 'grace_period') AND p_expires_at > NOW();
+
+  IF v_subscription_id IS NULL THEN
+    INSERT INTO premium_subscriptions (
+      user_id,
+      plan,
+      store_product_id,
+      store_transaction_id,
+      provider,
+      entitlement_id,
+      starts_at,
+      expires_at,
+      status,
+      is_active,
+      auto_renew,
+      environment,
+      last_synced_at
+    ) VALUES (
+      auth.uid(),
+      p_plan,
+      p_store_product_id,
+      p_store_transaction_id,
+      p_provider,
+      p_entitlement_id,
+      NOW(),
+      p_expires_at,
+      p_status,
+      v_is_premium,
+      p_auto_renew,
+      p_environment,
+      NOW()
+    )
+    RETURNING id INTO v_subscription_id;
+  ELSE
+    UPDATE premium_subscriptions
+    SET plan = p_plan,
+        store_product_id = p_store_product_id,
+        store_transaction_id = COALESCE(p_store_transaction_id, store_transaction_id),
+        provider = p_provider,
+        entitlement_id = p_entitlement_id,
+        expires_at = p_expires_at,
+        status = p_status,
+        is_active = v_is_premium,
+        auto_renew = p_auto_renew,
+        environment = p_environment,
+        last_synced_at = NOW()
+    WHERE id = v_subscription_id;
+  END IF;
+
+  UPDATE user_profiles
+  SET is_premium = v_is_premium
+  WHERE id = auth.uid();
+
+  RETURN v_subscription_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION fn_set_premium_inactive(
+  p_status subscription_status DEFAULT 'expired'
+)
+RETURNS VOID AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE premium_subscriptions
+  SET is_active = FALSE,
+      status = p_status,
+      last_synced_at = NOW()
+  WHERE user_id = auth.uid()
+    AND is_active = TRUE;
+
+  UPDATE user_profiles
+  SET is_premium = FALSE
+  WHERE id = auth.uid();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Discovery function (PostGIS + scoring)
 CREATE OR REPLACE FUNCTION fn_discover_profiles(
   p_user_id UUID,
@@ -462,18 +1371,23 @@ BEGIN
     ) / 1000)::numeric, 1)::DOUBLE PRECISION AS distance_km,
     -- Scoring
     (
-      (1.0 - LEAST(ST_Distance(up.location::geography, ST_SetSRID(ST_MakePoint(p_lon, p_lat), 4326)::geography) / 1000 / p_radius_km, 1.0)) * 0.4
+      (1.0 - LEAST(ST_Distance(up.location::geography, ST_SetSRID(ST_MakePoint(p_lon, p_lat), 4326)::geography) / 1000 / p_radius_km, 1.0)) * 0.30
       + (SELECT COUNT(*)::DOUBLE PRECISION / GREATEST((SELECT COUNT(*) FROM user_interests WHERE user_id = p_user_id), 1)
          FROM user_interests ui2 WHERE ui2.user_id = up.id
          AND ui2.interest_id IN (SELECT interest_id FROM user_interests WHERE user_id = p_user_id)
-        ) * 0.35
+        ) * 0.28
       + CASE
           WHEN up.last_active_at > NOW() - INTERVAL '1 hour' THEN 1.0
           WHEN up.last_active_at > NOW() - INTERVAL '24 hours' THEN 0.7
           WHEN up.last_active_at > NOW() - INTERVAL '72 hours' THEN 0.4
           ELSE 0.1
-        END * 0.15
-      + CASE WHEN COALESCE((SELECT boost_until FROM activity_scores WHERE activity_scores.user_id = up.id), NOW() - INTERVAL '1 day') > NOW() THEN 1.0 ELSE 0.0 END * 0.10
+        END * 0.14
+      + CASE WHEN COALESCE((SELECT boost_until FROM activity_scores WHERE activity_scores.user_id = up.id), NOW() - INTERVAL '1 day') > NOW() THEN 1.0 ELSE 0.0 END * 0.08
+      + CASE WHEN up.is_verified THEN 1.0 ELSE 0.0 END * 0.08
+      + CASE WHEN up.is_premium THEN 1.0 ELSE 0.0 END * 0.05
+      + CASE WHEN up.bio IS NOT NULL AND char_length(TRIM(up.bio)) >= 20 THEN 1.0 ELSE 0.0 END * 0.03
+      + CASE WHEN up.city IS NOT NULL AND char_length(TRIM(up.city)) > 0 THEN 1.0 ELSE 0.0 END * 0.02
+      + CASE WHEN (SELECT COUNT(*) FROM user_photos WHERE user_id = up.id) >= 2 THEN 1.0 ELSE 0.0 END * 0.02
     ) AS score,
     up.is_verified,
     up.spotify_track_name,
@@ -483,6 +1397,8 @@ BEGIN
   FROM user_profiles up
   WHERE up.id != p_user_id
     AND up.is_active = TRUE
+    AND up.account_status = 'active'
+    AND (up.shadow_ban_until IS NULL OR up.shadow_ban_until <= NOW())
     AND up.location IS NOT NULL
     AND ST_DWithin(
       up.location::geography,
@@ -512,6 +1428,7 @@ ALTER TABLE swipe_actions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_verifications ENABLE ROW LEVEL SECURITY;
@@ -623,6 +1540,23 @@ CREATE POLICY messages_update_read ON messages
     )
   );
 
+-- Chat Requests
+CREATE POLICY chat_requests_select_participant ON chat_requests
+  FOR SELECT TO authenticated
+  USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY chat_requests_insert_sender ON chat_requests
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = sender_id
+    AND auth.uid() <> receiver_id
+  );
+
+CREATE POLICY chat_requests_update_receiver ON chat_requests
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = receiver_id)
+  WITH CHECK (auth.uid() = receiver_id);
+
 -- Blocks
 CREATE POLICY blocks_insert_own ON blocks
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = blocker_id);
@@ -640,6 +1574,9 @@ CREATE POLICY reports_insert_own ON reports
 CREATE POLICY reports_select_own ON reports
   FOR SELECT TO authenticated USING (auth.uid() = reporter_id);
 
+CREATE POLICY reports_select_admin ON reports
+  FOR SELECT TO authenticated USING (fn_is_admin());
+
 -- User Verifications
 CREATE POLICY verifications_insert_own ON user_verifications
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
@@ -647,9 +1584,15 @@ CREATE POLICY verifications_insert_own ON user_verifications
 CREATE POLICY verifications_select_own ON user_verifications
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
+CREATE POLICY verifications_select_admin ON user_verifications
+  FOR SELECT TO authenticated USING (fn_is_admin());
+
 -- Premium Subscriptions
 CREATE POLICY subscriptions_select_own ON premium_subscriptions
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+CREATE POLICY subscriptions_select_admin ON premium_subscriptions
+  FOR SELECT TO authenticated USING (fn_is_admin());
 
 -- Daily Limits
 CREATE POLICY daily_limits_select_own ON daily_limits

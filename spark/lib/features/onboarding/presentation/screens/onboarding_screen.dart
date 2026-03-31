@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:geocoding/geocoding.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -16,7 +17,9 @@ import 'package:spark/core/constants/app_colors.dart';
 import 'package:spark/core/constants/app_dimensions.dart';
 import 'package:spark/core/constants/app_strings.dart';
 import 'package:spark/core/router/app_router.dart';
+import 'package:spark/core/services/analytics_service.dart';
 import 'package:spark/core/theme/app_theme.dart';
+import 'package:spark/features/notifications/notification_service.dart';
 import 'package:spark/shared/widgets/neon_button.dart';
 import 'package:spark/shared/widgets/neon_text_field.dart';
 
@@ -66,6 +69,20 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     with TickerProviderStateMixin {
+  static const Set<int> _optionalSteps = {3, 5, 6, 8};
+  static const List<String> _stepLabels = [
+    'Podstawy',
+    'Tożsamość',
+    'Zdjęcia',
+    'Bio',
+    'Zainteresowania',
+    'Preferencje',
+    'Sociale',
+    'Tryby',
+    'Lokalizacja',
+    'Podsumowanie',
+  ];
+
   final _pageController = PageController();
   int _currentStep = 0;
   static const _totalSteps = 10;
@@ -102,6 +119,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   // Step 9: Location
   bool _locationGranted = false;
   Position? _position;
+  String? _detectedCity;
 
   bool _isSaving = false;
 
@@ -138,6 +156,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
   int get _photoCount => _photos.where((p) => p != null).length;
 
+  bool get _isCurrentStepOptional => _optionalSteps.contains(_currentStep);
+
+  String get _currentStepLabel => _stepLabels[_currentStep];
+
   bool get _canProceed {
     switch (_currentStep) {
       case 0:
@@ -151,7 +173,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       case 4:
         return _selectedInterests.length >= _minInterests;
       case 5:
-        return _selectedDesiredInterests.length >= _minInterests;
+        return true;
       case 6:
         return true; // social media is optional
       case 7:
@@ -185,6 +207,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       );
       setState(() => _currentStep--);
     }
+  }
+
+  void _skipCurrentStep() {
+    if (_currentStep == _totalSteps - 1) return;
+    _nextStep();
   }
 
   Future<void> _pickPhoto(int index) async {
@@ -248,6 +275,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           _locationGranted = true;
           _position = pos;
         });
+        await _resolveCity(pos);
       } else {
         final status = await Permission.location.request();
         if (status.isGranted) {
@@ -260,11 +288,34 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             _locationGranted = true;
             _position = pos;
           });
+          await _resolveCity(pos);
         }
       }
     } catch (_) {
       setState(() => _locationGranted = false);
     }
+  }
+
+  Future<void> _resolveCity(Position pos) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        pos.latitude,
+        pos.longitude,
+      );
+      if (!mounted || placemarks.isEmpty) return;
+      final place = placemarks.first;
+      final city = ([
+        place.locality,
+        place.subAdministrativeArea,
+        place.administrativeArea,
+      ].firstWhere(
+        (value) => value != null && value.trim().isNotEmpty,
+        orElse: () => '',
+      )) ??
+          '';
+      if (city.trim().isEmpty) return;
+      setState(() => _detectedCity = city.trim());
+    } catch (_) {}
   }
 
   Future<void> _finish() async {
@@ -307,7 +358,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         'p_gender': _selectedGender ?? 'female',
         'p_bio': _bioController.text.trim(),
         'p_modes': _selectedModes.toList(),
-        'p_city': null,
+        'p_city': _detectedCity,
       });
 
       // 3. Save interests
@@ -338,18 +389,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
       try {
         final socialHandles = <String, String?>{};
         if (_instagramController.text.trim().isNotEmpty) {
-          socialHandles['instagram'] = _instagramController.text.trim();
+          socialHandles['instagram_handle'] = _instagramController.text.trim();
         }
         if (_tiktokController.text.trim().isNotEmpty) {
-          socialHandles['tiktok'] = _tiktokController.text.trim();
+          socialHandles['tiktok_handle'] = _tiktokController.text.trim();
         }
         if (_snapchatController.text.trim().isNotEmpty) {
-          socialHandles['snapchat'] = _snapchatController.text.trim();
+          socialHandles['snapchat_handle'] = _snapchatController.text.trim();
         }
         if (socialHandles.isNotEmpty) {
-          await supabase.from('user_profiles').update({
-            'social_links': socialHandles,
-          }).eq('id', user.id);
+          await supabase.from('user_profiles').update(socialHandles).eq('id', user.id);
         }
       } catch (_) {}
 
@@ -372,11 +421,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           await supabase.rpc('fn_update_user_location', params: {
             'lat': _position!.latitude,
             'lng': _position!.longitude,
+            'city_name': _detectedCity,
           });
         } catch (_) {}
       }
 
       if (mounted) {
+        await NotificationService.instance.init();
+        await AnalyticsService.instance.track(
+          'onboarding_completed',
+          properties: {
+            'photos_count': _photoCount,
+            'interests_count': _selectedInterests.length,
+            'desired_interests_count': _selectedDesiredInterests.length,
+            'modes_count': _selectedModes.length,
+            'location_granted': _position != null,
+          },
+        );
         context.go(RoutePaths.home);
       }
     } catch (e) {
@@ -403,46 +464,95 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 horizontal: AppDimensions.screenPadding,
                 vertical: AppDimensions.paddingM,
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_currentStep > 0)
-                    GestureDetector(
-                      onTap: _prevStep,
-                      child: const Padding(
-                        padding:
-                            EdgeInsets.only(right: AppDimensions.spacing12),
-                        child: Icon(Icons.arrow_back_ios,
-                            color: AppColors.textPrimary, size: 20),
-                      ),
-                    ),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius:
-                          BorderRadius.circular(AppDimensions.radiusRound),
-                      child: Stack(
-                        children: [
-                          Container(height: 4, color: AppColors.surfaceLight),
-                          AnimatedContainer(
-                            duration: const Duration(
-                                milliseconds: AppDimensions.animNormal),
-                            height: 4,
-                            width: MediaQuery.of(context).size.width *
-                                ((_currentStep + 1) / _totalSteps),
-                            decoration: BoxDecoration(
-                              gradient: AppColors.neonPinkGradient,
-                            ),
+                  Row(
+                    children: [
+                      if (_currentStep > 0)
+                        GestureDetector(
+                          onTap: _prevStep,
+                          child: const Padding(
+                            padding:
+                                EdgeInsets.only(right: AppDimensions.spacing12),
+                            child: Icon(Icons.arrow_back_ios,
+                                color: AppColors.textPrimary, size: 20),
                           ),
-                        ],
+                        ),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(AppDimensions.radiusRound),
+                          child: Stack(
+                            children: [
+                              Container(height: 4, color: AppColors.surfaceLight),
+                              AnimatedContainer(
+                                duration: const Duration(
+                                    milliseconds: AppDimensions.animNormal),
+                                height: 4,
+                                width: MediaQuery.of(context).size.width *
+                                    ((_currentStep + 1) / _totalSteps),
+                                decoration: BoxDecoration(
+                                  gradient: AppColors.neonPinkGradient,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      const Gap(AppDimensions.spacing12),
+                      Text(
+                        'Krok ${_currentStep + 1} z $_totalSteps',
+                        style: GoogleFonts.outfit(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                   const Gap(AppDimensions.spacing12),
-                  Text(
-                    '${_currentStep + 1}/$_totalSteps',
-                    style: GoogleFonts.outfit(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _currentStepLabel,
+                              style: GoogleFonts.outfit(
+                                color: AppColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Gap(2),
+                            Text(
+                              _isCurrentStepOptional
+                                  ? 'Opcjonalne, możesz wrócić do tego później.'
+                                  : 'Uzupełnij, żeby profil dobrze wystartował.',
+                              style: GoogleFonts.outfit(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_isCurrentStepOptional && _currentStep < _totalSteps - 1)
+                        TextButton(
+                          onPressed: _skipCurrentStep,
+                          child: Text(
+                            AppStrings.skip,
+                            style: GoogleFonts.outfit(
+                              color: AppColors.textHint,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -476,7 +586,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
                 child: NeonButton(
                   label: _currentStep == _totalSteps - 1
                       ? AppStrings.done
-                      : AppStrings.next,
+                      : _isCurrentStepOptional
+                          ? 'Dalej'
+                          : AppStrings.next,
                   onPressed: _canProceed ? _nextStep : null,
                   enabled: _canProceed,
                   isLoading: _isSaving,
@@ -585,7 +697,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         'icon': Icons.male
       },
       {
-        'key': 'non_binary',
+        'key': 'nonbinary',
         'label': AppStrings.onboardingGenderNonBinary,
         'icon': Icons.transgender
       },
@@ -872,8 +984,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   Widget _buildDesiredInterestsStep() {
     return _buildInterestSelector(
       title: 'Poszukiwane zainteresowania',
-      subtitle: 'Czego szukasz u drugiej osoby?',
+      subtitle: 'Opcjonalnie: zaznacz, co fajnie byłoby znaleźć u drugiej osoby.',
       selectedSet: _selectedDesiredInterests,
+      isOptional: true,
     );
   }
 
@@ -881,6 +994,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
     required String title,
     required String subtitle,
     required Set<int> selectedSet,
+    bool isOptional = false,
   }) {
     final remaining = _maxInterests - selectedSet.length;
     return Padding(
@@ -910,7 +1024,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: Text(
-              selectedSet.length < _minInterests
+              isOptional && selectedSet.isEmpty
+                  ? 'Możesz to pominąć i wrócić później.'
+                  : selectedSet.length < _minInterests
                   ? 'Wybierz co najmniej $_minInterests (${selectedSet.length} wybrano)'
                   : selectedSet.length == _maxInterests
                       ? 'Maksimum osiągnięte ($_maxInterests/$_maxInterests wybrano)'
@@ -1343,6 +1459,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
   // ── Step 10: Summary ──
   Widget _buildSummaryStep() {
+    final firstPhotoIndex = _photos.indexWhere((photo) => photo != null);
+    final previewBytes =
+        firstPhotoIndex >= 0 ? _photoBytes[firstPhotoIndex] : null;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.screenPadding),
@@ -1386,6 +1506,68 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Center(
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 34,
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                        backgroundImage:
+                            previewBytes != null ? MemoryImage(previewBytes) : null,
+                        child: _photoCount == 0
+                            ? const Icon(
+                                Icons.person_rounded,
+                                color: AppColors.primary,
+                                size: 32,
+                              )
+                            : null,
+                      ),
+                      const Gap(12),
+                      Text(
+                        _nameController.text.trim().isEmpty
+                            ? 'Twój profil Spark'
+                            : _nameController.text.trim(),
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (_selectedModes.isNotEmpty) ...[
+                        const Gap(10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: _selectedModes.map((mode) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.colorForMode(mode)
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                mode == 'relationship'
+                                    ? 'Związek'
+                                    : mode == 'friends'
+                                        ? 'Znajomi'
+                                        : 'FWB',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.colorForMode(mode),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                      const Gap(16),
+                    ],
+                  ),
+                ),
                 _SummaryRow(label: 'Imię', value: _nameController.text.trim()),
                 _SummaryRow(
                     label: 'Płeć',

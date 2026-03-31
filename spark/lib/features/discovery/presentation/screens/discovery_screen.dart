@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:spark/core/services/privacy_preferences_service.dart';
 import 'package:spark/core/utils/web_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -89,9 +90,6 @@ class DiscoveryProfile {
 // ─── Empty state (no mock data) ─────────────────────────────
 
 // ─── Providers ──────────────────────────────────────────────
-
-const _supabaseStorageBase =
-    'https://fildemavidnskmhcyqin.supabase.co/storage/v1/object/public/photos/';
 
 class DiscoveryState {
   final List<DiscoveryProfile> profiles;
@@ -209,59 +207,114 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
         }
       } catch (_) {}
 
-      final response = await _supabase
-          .from('user_profiles')
-          .select('*')
-          .neq('id', userId)
-          .eq('is_active', true)
-          .limit(50)
-          .timeout(const Duration(seconds: 10));
-
-      final List<dynamic> data = response as List<dynamic>;
+      List<dynamic> data = const [];
+      if (myLat != null && myLon != null) {
+        final response = await _supabase.rpc(
+          'fn_discover_profiles',
+          params: {
+            'p_user_id': userId,
+            'p_lon': myLon,
+            'p_lat': myLat,
+            'p_radius_km': state.distanceFilter.round(),
+            'p_min_age': state.ageFilter.start.round(),
+            'p_max_age': state.ageFilter.end.round(),
+            'p_genders': state.genderFilters.toList(),
+            'p_modes': state.modeFilters.toList(),
+            'p_limit': 50,
+          },
+        ).timeout(const Duration(seconds: 10));
+        data = response as List<dynamic>;
+      } else {
+        final response = await _supabase
+            .from('user_profiles')
+            .select('*')
+            .neq('id', userId)
+            .eq('is_active', true)
+            .eq('account_status', 'active')
+            .limit(50)
+            .timeout(const Duration(seconds: 10));
+        data = response as List<dynamic>;
+      }
 
       if (data.isEmpty) {
         state = DiscoveryState(profiles: const <DiscoveryProfile>[], isLoading: false);
         return;
       }
 
+      final profileIds = data
+          .map((row) => (row['profile_id'] ?? row['id'])?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+
+      final extraProfiles = <String, Map<String, dynamic>>{};
+      final photosByUser = <String, List<String>>{};
+      final interestsByUser = <String, List<String>>{};
+
+      try {
+        final rows = await _supabase
+            .from('user_profiles')
+            .select(
+              'id, profile_gradient_start, profile_gradient_end, spotify_artwork_url, modes, city',
+            )
+            .inFilter('id', profileIds);
+        for (final row in rows as List) {
+          final id = row['id']?.toString();
+          if (id == null || id.isEmpty) continue;
+          extraProfiles[id] = Map<String, dynamic>.from(row as Map);
+        }
+      } catch (_) {}
+
+      try {
+        final photoRows = await _supabase
+            .from('user_photos')
+            .select('user_id, storage_path, position')
+            .inFilter('user_id', profileIds)
+            .order('position', ascending: true);
+        for (final row in photoRows as List) {
+          final userPhotoId = row['user_id']?.toString();
+          final path = row['storage_path']?.toString();
+          if (userPhotoId == null || userPhotoId.isEmpty || path == null || path.isEmpty) {
+            continue;
+          }
+          final url = path.startsWith('http')
+              ? path
+              : _supabase.storage.from('photos').getPublicUrl(path);
+          photosByUser.putIfAbsent(userPhotoId, () => <String>[]).add(url);
+        }
+      } catch (_) {}
+
+      try {
+        final intRows = await _supabase
+            .from('user_interests')
+            .select('user_id, interests(name)')
+            .inFilter('user_id', profileIds);
+        for (final row in intRows as List) {
+          final interestUserId = row['user_id']?.toString();
+          final interestMap = row['interests'];
+          final interestName = interestMap is Map ? interestMap['name']?.toString() : null;
+          if (interestUserId == null ||
+              interestUserId.isEmpty ||
+              interestName == null ||
+              interestName.isEmpty) {
+            continue;
+          }
+          interestsByUser.putIfAbsent(interestUserId, () => <String>[]).add(interestName);
+        }
+      } catch (_) {}
+
       final profiles = <DiscoveryProfile>[];
       for (final row in data) {
-        final profileId = row['id']?.toString() ?? '';
+        final profileId = (row['profile_id'] ?? row['id'])?.toString() ?? '';
 
         if (blockedIds.contains(profileId) || swipedIds.contains(profileId)) {
           continue;
         }
 
-        List<String> photoUrls = [];
-        try {
-          final photosRes = await _supabase
-              .from('user_photos')
-              .select('storage_path, position')
-              .eq('user_id', profileId)
-              .order('position', ascending: true);
-          photoUrls = (photosRes as List<dynamic>).map((p) {
-            final path = p['storage_path'] as String;
-            return path.startsWith('http') ? path : '$_supabaseStorageBase$path';
-          }).toList().cast<String>();
-        } catch (_) {}
+        final extra = extraProfiles[profileId] ?? const <String, dynamic>{};
+        final photoUrls = photosByUser[profileId] ?? const <String>[];
+        final interests = interestsByUser[profileId] ?? const <String>[];
 
-        List<String> interests = [];
-        try {
-          final intRes = await _supabase
-              .from('user_interests')
-              .select('interests(name)')
-              .eq('user_id', profileId);
-          interests = (intRes as List<dynamic>)
-              .map((i) {
-                final interest = i['interests'];
-                if (interest is Map) return interest['name']?.toString() ?? '';
-                return '';
-              })
-              .where((s) => s.isNotEmpty)
-              .toList();
-        } catch (_) {}
-
-        final rawModes = row['modes'];
+        final rawModes = row['modes'] ?? extra['modes'];
         List<String> modesList = [];
         if (rawModes is List) {
           modesList = rawModes.map((e) => e.toString()).toList();
@@ -288,13 +341,15 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
 
         if (age < state.ageFilter.start || age > state.ageFilter.end) continue;
         final gender = row['gender']?.toString() ?? 'other';
-        if (!state.genderFilters.contains(gender)) continue;
-        if (!modesList.any((m) => state.modeFilters.contains(m))) continue;
+        if (myLat == null || myLon == null) {
+          if (!state.genderFilters.contains(gender)) continue;
+          if (!modesList.any((m) => state.modeFilters.contains(m))) continue;
+        }
 
         Color? gradStart;
         Color? gradEnd;
-        final gsRaw = row['profile_gradient_start'];
-        final geRaw = row['profile_gradient_end'];
+        final gsRaw = extra['profile_gradient_start'];
+        final geRaw = extra['profile_gradient_end'];
         if (gsRaw is String && gsRaw.isNotEmpty) {
           gradStart = _parseHexColor(gsRaw);
         }
@@ -312,6 +367,8 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
           distanceKm = -1;
         }
 
+        final city = (row['city'] ?? extra['city'])?.toString();
+
         profiles.add(DiscoveryProfile(
           id: profileId,
           name: row['display_name']?.toString() ?? '',
@@ -327,10 +384,10 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
           spotifyTrackName: row['spotify_track_name']?.toString(),
           spotifyArtist: row['spotify_artist_name']?.toString(),
           spotifyPreviewUrl: row['spotify_preview_url']?.toString(),
-          spotifyArtworkUrl: row['spotify_artwork_url']?.toString(),
-          city: row['city']?.toString(),
+          spotifyArtworkUrl: extra['spotify_artwork_url']?.toString(),
+          city: city,
           gender: gender,
-          score: null,
+          score: (row['score'] as num?)?.toDouble(),
           profileGradientStart: gradStart,
           profileGradientEnd: gradEnd,
         ));
@@ -377,20 +434,19 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
 
       final targetId = state.currentProfile!.id;
 
-      await _supabase.from('swipe_actions').insert({
-        'user_id': userId,
-        'target_id': targetId,
-        'action': action,
-      });
-
-      try {
-        await _supabase.rpc('fn_increment_daily_limit', params: {
-          'p_user_id': userId,
+      final swipeAccepted = await _supabase.rpc(
+        'fn_submit_swipe_action',
+        params: {
+          'p_target_id': targetId,
           'p_action': action,
-        });
-      } catch (_) {}
+        },
+      );
 
-      if (action == 'like' || action == 'super_like') {
+      if (swipeAccepted != true) {
+        return false;
+      }
+
+      if (action == 'like' || action == 'superlike') {
         final matchCheck = await _supabase
             .from('matches')
             .select('id')
@@ -433,7 +489,7 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
   Future<void> superLike() async {
     if (!state.hasProfiles) return;
     _lastLikedProfile = state.currentProfile;
-    final matched = await _recordSwipeAction('super_like');
+    final matched = await _recordSwipeAction('superlike');
     _hasNewMatch = matched;
     state = state.copyWith(currentIndex: state.currentIndex + 1);
   }
@@ -465,12 +521,14 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return false;
-      await _supabase.from('chat_requests').insert({
-        'sender_id': userId,
-        'target_id': targetId,
-        'message': message,
-        'status': 'pending',
-      });
+      await _supabase.rpc(
+        'fn_submit_chat_request',
+        params: {
+          'p_receiver_id': targetId,
+          'p_message': message,
+          'p_conversation_id': null,
+        },
+      );
       return true;
     } catch (e) {
       debugPrint('Chat request error: $e');
@@ -487,6 +545,18 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
     }
     state = state.copyWith(genderFilters: genders);
   }
+
+  Future<void> resetFilters() async {
+    state = state.copyWith(
+      distanceFilter: 50.0,
+      ageFilter: const RangeValues(18, 65),
+      modeFilters: {'relationship', 'friends', 'fwb'},
+      genderFilters: {'female', 'male', 'nonbinary'},
+      currentIndex: 0,
+      passedProfiles: const [],
+    );
+    await _loadProfiles();
+  }
 }
 
 final discoveryProvider =
@@ -501,6 +571,7 @@ class _ImagePreloader {
 
   static void preloadImages(BuildContext context, List<DiscoveryProfile> profiles, int currentIndex) {
     for (int i = currentIndex + 1; i <= currentIndex + 2 && i < profiles.length; i++) {
+      if (profiles[i].photos.isEmpty) continue;
       final photo = profiles[i].photos.first;
       if (!_preloadedUrls.contains(photo)) {
         _preloadedUrls.add(photo);
@@ -527,6 +598,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
   double _dragX = 0;
   double _dragY = 0;
   int _currentPhotoIndex = 0;
+  bool _showDistance = true;
   bool get _isPremium {
       final profileAsync = ref.read(currentProfileProvider);
       return profileAsync.when(
@@ -537,11 +609,72 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
   }
 
   @override
+  void initState() {
+    super.initState();
+    _loadPrivacyPreferences();
+  }
+
+  Future<void> _loadPrivacyPreferences() async {
+    final showDistance =
+        await PrivacyPreferencesService.instance.getShowDistance();
+    if (!mounted) return;
+    setState(() => _showDistance = showDistance);
+  }
+
+  bool _hasActiveFilters(DiscoveryState state) {
+    return state.distanceFilter != 50.0 ||
+        state.ageFilter != const RangeValues(18, 65) ||
+        state.modeFilters.length != 3 ||
+        state.genderFilters.length != 3;
+  }
+
+  List<String> _activeFilterLabels(DiscoveryState state) {
+    final labels = <String>[];
+
+    if (state.distanceFilter != 50.0) {
+      labels.add('Do ${state.distanceFilter.round()} km');
+    }
+
+    if (state.ageFilter != const RangeValues(18, 65)) {
+      labels.add(
+        '${state.ageFilter.start.round()}-${state.ageFilter.end.round()} lat',
+      );
+    }
+
+    if (state.modeFilters.length != 3) {
+      labels.add(
+        state.modeFilters
+            .map((mode) => mode == 'relationship'
+                ? 'Związek'
+                : mode == 'friends'
+                    ? 'Znajomi'
+                    : 'FWB')
+            .join(' • '),
+      );
+    }
+
+    if (state.genderFilters.length != 3) {
+      labels.add(
+        state.genderFilters
+            .map((gender) => gender == 'female'
+                ? 'Kobiety'
+                : gender == 'male'
+                    ? 'Mężczyźni'
+                    : 'Niebinarni')
+            .join(' • '),
+      );
+    }
+
+    return labels;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final state = ref.watch(discoveryProvider);
     final notifier = ref.read(discoveryProvider.notifier);
     final size = MediaQuery.of(context).size;
     final topPadding = MediaQuery.of(context).padding.top;
+    final hasActiveFilters = _hasActiveFilters(state);
 
     if (!state.isLoading && state.hasProfiles) {
       _ImagePreloader.preloadImages(context, state.profiles, state.currentIndex);
@@ -560,10 +693,14 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
             )
           else if (state.hasProfiles)
             RepaintBoundary(
-              child: _buildSwipeCard(state.currentProfile!, size),
+              child: _buildSwipeCard(
+                state.currentProfile!,
+                size,
+                hasActiveFilters: hasActiveFilters,
+              ),
             )
           else
-            _buildEmptyState(),
+            _buildEmptyState(hasActiveFilters: hasActiveFilters),
 
           // Header
           Positioned(
@@ -575,6 +712,66 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
               onFilterTap: () => _openFilters(),
             ),
           ),
+
+          if (hasActiveFilters)
+            Positioned(
+              top: topPadding + 68,
+              left: 12,
+              right: 12,
+              child: SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    ..._activeFilterLabels(state).map(
+                      (label) => Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppColors.divider.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        child: Text(
+                          label,
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: notifier.resetFilters,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Wyczyść',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           // Bottom action bar
           if (!state.isLoading && state.hasProfiles)
@@ -603,7 +800,11 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
     );
   }
 
-  Widget _buildSwipeCard(DiscoveryProfile profile, Size size) {
+  Widget _buildSwipeCard(
+    DiscoveryProfile profile,
+    Size size, {
+    required bool hasActiveFilters,
+  }) {
     final angle = _dragX / 900;
     final topPadding = MediaQuery.of(context).padding.top;
 
@@ -661,7 +862,12 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
           ..translate(_dragX, _dragY * 0.4)
           ..rotateZ(angle),
         child: Container(
-          margin: EdgeInsets.fromLTRB(10, topPadding + 70, 10, 130),
+          margin: EdgeInsets.fromLTRB(
+            10,
+            topPadding + (hasActiveFilters ? 108 : 70),
+            10,
+            130,
+          ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
             color: const Color(0xFFFFF5F7),
@@ -672,13 +878,13 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
             boxShadow: [
               BoxShadow(
                 color: AppColors.primary.withValues(alpha: 0.12),
-                blurRadius: 24,
+                blurRadius: 18,
                 spreadRadius: 0,
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 12,
+                blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
@@ -822,6 +1028,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
                     profile: profile,
                     gradStart: gradStart,
                     gradEnd: gradEnd,
+                    showDistance: _showDistance,
                   ),
                 ),
 
@@ -1040,7 +1247,7 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({required bool hasActiveFilters}) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -1062,36 +1269,78 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
             ),
             const Gap(24),
             Text(
-              AppStrings.discoveryEmpty,
+              hasActiveFilters
+                  ? 'Nic nie pasuje do wybranych filtrów.'
+                  : AppStrings.discoveryEmpty,
               style: GoogleFonts.outfit(
-                fontSize: 17,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500,
+                fontSize: 20,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
                 height: 1.4,
               ),
               textAlign: TextAlign.center,
             ),
-            const Gap(24),
-            GestureDetector(
-              onTap: () => ref.read(discoveryProvider.notifier).refresh(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Text(
-                  'Odswiez',
-                  style: GoogleFonts.outfit(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
-                  ),
-                ),
+            const Gap(12),
+            Text(
+              hasActiveFilters
+                  ? 'Poszerz wiek albo dystans, żeby zobaczyć więcej osób.'
+                  : 'Odśwież discovery albo wróć za chwilę. Nowe profile pojawiają się regularnie.',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.5,
               ),
+              textAlign: TextAlign.center,
+            ),
+            const Gap(24),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                if (hasActiveFilters)
+                  GestureDetector(
+                    onTap: () => ref.read(discoveryProvider.notifier).resetFilters(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Poszerz filtry',
+                        style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                GestureDetector(
+                  onTap: () => ref.read(discoveryProvider.notifier).refresh(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                        'Odśwież',
+                      style: GoogleFonts.outfit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1299,7 +1548,12 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
                           width: double.infinity,
                           height: 52,
                           child: TextButton(
-                            onPressed: () => Navigator.pop(ctx),
+                            onPressed: () async {
+                              await notifier.refresh();
+                              if (context.mounted) {
+                                Navigator.pop(ctx);
+                              }
+                            },
                             style: TextButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               shape: RoundedRectangleBorder(
@@ -1332,7 +1586,10 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
   void _openProfileDetail(DiscoveryProfile profile) {
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => _FullProfileView(profile: profile),
+        pageBuilder: (_, __, ___) => _FullProfileView(
+          profile: profile,
+          showDistance: _showDistance,
+        ),
         transitionsBuilder: (_, animation, __, child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -1457,11 +1714,14 @@ class _DiscoveryScreenState extends ConsumerState<DiscoveryScreen>
       final client = Supabase.instance.client;
       final me = client.auth.currentUser;
       if (me == null) return;
-      await client.from('reports').insert({
-        'reporter_id': me.id,
-        'reported_id': userId,
-        'reason': 'inappropriate',
-      });
+      await client.rpc(
+        'fn_submit_report',
+        params: {
+          'p_reported_id': userId,
+          'p_reason': 'inappropriate_content',
+          'p_description': null,
+        },
+      );
     } catch (_) {}
   }
 
@@ -1580,8 +1840,12 @@ class _PhotoDotsIndicator extends StatelessWidget {
 
 class _ProfileInfoOverlay extends StatelessWidget {
   final DiscoveryProfile profile;
+  final bool showDistance;
 
-  const _ProfileInfoOverlay({required this.profile});
+  const _ProfileInfoOverlay({
+    required this.profile,
+    this.showDistance = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1623,18 +1887,22 @@ class _ProfileInfoOverlay extends StatelessWidget {
           const Gap(6),
           Row(
             children: [
-              Icon(Icons.location_on_outlined,
-                  color: Colors.white.withValues(alpha: 0.6), size: 15),
-              const Gap(3),
-              Text(
-                profile.distanceKm < 0 ? 'Blisko' : '${profile.distanceKm.toStringAsFixed(1)} km',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontWeight: FontWeight.w400,
+              if (showDistance) ...[
+                Icon(Icons.location_on_outlined,
+                    color: Colors.white.withValues(alpha: 0.6), size: 15),
+                const Gap(3),
+                Text(
+                  profile.distanceKm < 0
+                      ? 'Blisko'
+                      : '${profile.distanceKm.toStringAsFixed(1)} km',
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
-              const Gap(12),
+                const Gap(12),
+              ],
               _ModeBadge(mode: profile.mode, color: modeColor),
             ],
           ),
@@ -1643,7 +1911,7 @@ class _ProfileInfoOverlay extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: profile.interests.take(4).map((i) {
+              children: profile.interests.take(3).map((i) {
                 final emoji = _kDiscoveryInterestEmojis[i];
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1687,11 +1955,13 @@ class _ProfileInfoPanel extends StatelessWidget {
   final DiscoveryProfile profile;
   final Color gradStart;
   final Color gradEnd;
+  final bool showDistance;
 
   const _ProfileInfoPanel({
     required this.profile,
     required this.gradStart,
     required this.gradEnd,
+    this.showDistance = true,
   });
 
   String get _modeLabel {
@@ -1776,17 +2046,22 @@ class _ProfileInfoPanel extends StatelessWidget {
               const Gap(4),
               // Distance + bio snippet
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(Icons.location_on_outlined, color: AppColors.textHint, size: 13),
-                  const Gap(2),
-                  Text(
-                    profile.distanceKm < 0 ? 'Blisko' : '${profile.distanceKm.toStringAsFixed(1)} km',
-                    style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textHint),
-                  ),
+                  if (showDistance) ...[
+                    Icon(Icons.location_on_outlined, color: AppColors.textHint, size: 13),
+                    const Gap(2),
+                    Text(
+                      profile.distanceKm < 0
+                          ? 'Blisko'
+                          : '${profile.distanceKm.toStringAsFixed(1)} km',
+                      style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textHint),
+                    ),
+                  ],
                   if (profile.bio.isNotEmpty) ...[
-                    const Gap(6),
+                    if (showDistance) const Gap(6),
                     Text('·', style: GoogleFonts.outfit(color: AppColors.textHint)),
-                    const Gap(6),
+                    if (showDistance) const Gap(6),
                     Expanded(
                       child: Text(
                         profile.bio,
@@ -1802,7 +2077,7 @@ class _ProfileInfoPanel extends StatelessWidget {
               if (profile.interests.isNotEmpty) ...[
                 const Gap(10),
                 Text(
-                  'Fajnie jakbyś lubił/a:',
+                  'Lubi:',
                   style: GoogleFonts.outfit(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1813,7 +2088,7 @@ class _ProfileInfoPanel extends StatelessWidget {
                 Wrap(
                   spacing: 6,
                   runSpacing: 4,
-                  children: profile.interests.take(3).map((i) {
+                  children: profile.interests.take(2).map((i) {
                     final e = _kDiscoveryInterestEmojis[i];
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -2265,8 +2540,12 @@ class _SpotifyMiniPlayerState extends State<_SpotifyMiniPlayer> {
 
 class _FullProfileView extends StatefulWidget {
   final DiscoveryProfile profile;
+  final bool showDistance;
 
-  const _FullProfileView({required this.profile});
+  const _FullProfileView({
+    required this.profile,
+    this.showDistance = true,
+  });
 
   @override
   State<_FullProfileView> createState() => _FullProfileViewState();
@@ -2414,17 +2693,21 @@ class _FullProfileViewState extends State<_FullProfileView> {
                   const Gap(6),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined,
-                          color: AppColors.textHint, size: 15),
-                      const Gap(3),
-                      Text(
-                        profile.distanceKm < 0 ? 'Blisko' : '${profile.distanceKm.toStringAsFixed(1)} km',
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          color: AppColors.textHint,
+                      if (widget.showDistance) ...[
+                        const Icon(Icons.location_on_outlined,
+                            color: AppColors.textHint, size: 15),
+                        const Gap(3),
+                        Text(
+                          profile.distanceKm < 0
+                              ? 'Blisko'
+                              : '${profile.distanceKm.toStringAsFixed(1)} km',
+                          style: GoogleFonts.outfit(
+                            fontSize: 14,
+                            color: AppColors.textHint,
+                          ),
                         ),
-                      ),
-                      const Gap(12),
+                        const Gap(12),
+                      ],
                       _DetailModeBadge(mode: profile.mode, color: modeColor),
                     ],
                   ),
