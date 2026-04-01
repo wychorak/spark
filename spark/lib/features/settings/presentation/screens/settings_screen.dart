@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -147,10 +148,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       final authenticated = await _localAuth.authenticate(
         localizedReason: 'Potwierdź tożsamość, aby wykonać tę akcję.',
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-        ),
+        biometricOnly: true,
       );
 
       if (!authenticated && context.mounted) {
@@ -940,7 +938,7 @@ class _ActionTile extends StatelessWidget {
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
             ),
             if (trailing != null) ...[
@@ -1136,7 +1134,7 @@ class _ToggleTile extends ConsumerWidget {
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
           const Gap(AppDimensions.spacing8),

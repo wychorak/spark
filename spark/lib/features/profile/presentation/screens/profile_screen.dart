@@ -3,8 +3,10 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -587,7 +589,7 @@ class _ProfileCompletionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     var score = 0;
 
-    if (profile.photos.length >= 2) score += 25;
+    if (profile.photoUrls.length >= 2) score += 25;
     if (profile.bio != null && profile.bio!.trim().isNotEmpty) score += 20;
     if (profile.interests.length >= 3) score += 20;
     if (profile.isVerified) score += 20;
@@ -595,7 +597,7 @@ class _ProfileCompletionCard extends StatelessWidget {
 
     final completion = (score / 100).clamp(0.0, 1.0);
     final nextStep = <String>[
-      if (profile.photos.length < 2) 'dodaj jeszcze jedno zdjęcie',
+      if (profile.photoUrls.length < 2) 'dodaj jeszcze jedno zdjęcie',
       if (profile.bio == null || profile.bio!.trim().isEmpty) 'uzupełnij bio',
       if (profile.interests.length < 3) 'wybierz więcej zainteresowań',
       if (!profile.isVerified) 'zweryfikuj profil',
@@ -1084,21 +1086,33 @@ class _SocialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final socials = <(String, String, String, Color, List<Color>)>[];
+    final socials = <_SocialEntry>[];
     if (profile.instagramHandle?.isNotEmpty ?? false) {
-      socials.add(('IG', 'Instagram',
-          '@${profile.instagramHandle}', const Color(0xFFE1306C),
-          [const Color(0xFFF58529), const Color(0xFFDD2A7B), const Color(0xFF8134AF)]));
+      socials.add(_SocialEntry(
+        name: 'Instagram',
+        handle: '@${profile.instagramHandle}',
+        iconSvg: _SocialIcons.instagram,
+        bgColors: [const Color(0xFFF58529), const Color(0xFFDD2A7B), const Color(0xFF8134AF)],
+        iconColor: Colors.white,
+      ));
     }
     if (profile.tiktokHandle?.isNotEmpty ?? false) {
-      socials.add(('TT', 'TikTok',
-          '@${profile.tiktokHandle}', const Color(0xFF000000),
-          [const Color(0xFF25F4EE), const Color(0xFFFE2C55), const Color(0xFF000000)]));
+      socials.add(_SocialEntry(
+        name: 'TikTok',
+        handle: '@${profile.tiktokHandle}',
+        iconSvg: _SocialIcons.tiktok,
+        bgColors: [const Color(0xFF010101), const Color(0xFF010101)],
+        iconColor: Colors.white,
+      ));
     }
     if (profile.snapchatHandle?.isNotEmpty ?? false) {
-      socials.add(('SC', 'Snapchat',
-          '@${profile.snapchatHandle}', const Color(0xFFFFFC00),
-          [const Color(0xFFFFFC00), const Color(0xFFFFE500)]));
+      socials.add(_SocialEntry(
+        name: 'Snapchat',
+        handle: '@${profile.snapchatHandle}',
+        iconSvg: _SocialIcons.snapchat,
+        bgColors: [const Color(0xFFFFFC00), const Color(0xFFFFE500)],
+        iconColor: const Color(0xFF000000),
+      ));
     }
 
     return Container(
@@ -1137,44 +1151,51 @@ class _SocialCard extends StatelessWidget {
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: Row(
                     children: [
                       Container(
-                        width: 38,
-                        height: 38,
+                        width: 42,
+                        height: 42,
                         decoration: BoxDecoration(
-                          color: s.$4.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: s.bgColors,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: s.bgColors.last.withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
                         child: Center(
-                          child: Text(
-                            s.$1,
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: s.$4 == const Color(0xFFFFFC00)
-                                  ? const Color(0xFF997A00)
-                                  : s.$4,
-                            ),
+                          child: SvgPicture.string(
+                            s.iconSvg,
+                            width: 22,
+                            height: 22,
+                            colorFilter: ColorFilter.mode(s.iconColor, BlendMode.srcIn),
                           ),
                         ),
                       ),
-                      const Gap(12),
+                      const Gap(14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              s.$2,
+                              s.name,
                               style: GoogleFonts.outfit(
-                                fontSize: 13,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.textPrimary,
                               ),
                             ),
                             Text(
-                              s.$3,
+                              s.handle,
                               style: GoogleFonts.outfit(
                                 fontSize: 12,
                                 color: AppColors.textSecondary,
@@ -1194,7 +1215,7 @@ class _SocialCard extends StatelessWidget {
                 if (!isLast)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Divider(height: 16, color: AppColors.divider),
+                    child: Divider(height: 1, color: AppColors.divider),
                   )
                 else
                   const Gap(14),
@@ -1205,6 +1226,43 @@ class _SocialCard extends StatelessWidget {
       ),
     ).animate().fadeIn(delay: 350.ms, duration: 300.ms);
   }
+}
+
+class _SocialEntry {
+  final String name;
+  final String handle;
+  final String iconSvg;
+  final List<Color> bgColors;
+  final Color iconColor;
+  const _SocialEntry({
+    required this.name,
+    required this.handle,
+    required this.iconSvg,
+    required this.bgColors,
+    required this.iconColor,
+  });
+}
+
+abstract final class _SocialIcons {
+  // Instagram camera outline SVG path
+  static const instagram = '''
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="20" height="20" rx="5" ry="5" stroke="white" stroke-width="2" fill="none"/>
+  <circle cx="12" cy="12" r="4" stroke="white" stroke-width="2" fill="none"/>
+  <circle cx="17.5" cy="6.5" r="1.5" fill="white"/>
+</svg>''';
+
+  // TikTok musical note SVG path
+  static const tiktok = '''
+<svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.88a8.27 8.27 0 0 0 4.84 1.55V7a4.85 4.85 0 0 1-1.07-.31z"/>
+</svg>''';
+
+  // Snapchat ghost SVG path
+  static const snapchat = '''
+<svg viewBox="0 0 24 24" fill="black" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12.07 2C9.05 2 7 4.06 7 7.04v.87c-.42.18-.87.27-1.33.27-.22 0-.44-.02-.65-.06l-.13.36c.55.28 1.14.46 1.75.54-.1.26-.24.5-.42.71-.44.5-1.06.79-1.72.79l-.22.59c.87.22 1.56.89 1.76 1.77.07.3.06.61-.03.91l.29.07c.32.08.64.12.97.12.57 0 1.13-.12 1.65-.35.51.72 1.36 1.14 2.26 1.14.9 0 1.75-.42 2.26-1.14.52.23 1.08.35 1.65.35.33 0 .65-.04.97-.12l.29-.07c-.09-.3-.1-.61-.03-.91.2-.88.89-1.55 1.76-1.77l-.22-.59c-.66 0-1.28-.29-1.72-.79-.18-.21-.32-.45-.42-.71.61-.08 1.2-.26 1.75-.54l-.13-.36c-.21.04-.43.06-.65.06-.46 0-.91-.09-1.33-.27v-.87C17 4.06 14.95 2 12.07 2z"/>
+</svg>''';
 }
 
 // ── Gradient Strip ──
