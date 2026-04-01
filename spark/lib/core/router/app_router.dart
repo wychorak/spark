@@ -14,7 +14,6 @@ import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/premium/presentation/screens/paywall_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/profile/presentation/screens/edit_profile_screen.dart';
-import '../../features/safety/presentation/screens/photo_verification_screen.dart';
 import '../../features/profile/presentation/screens/profile_detail_screen.dart';
 
 // ─────────────── Route Paths ───────────────
@@ -35,7 +34,6 @@ abstract final class RoutePaths {
   static const String chatDetail = '/chat/:id';
   static const String profileView = '/profile/:id';
   static const String editProfile = '/edit-profile';
-  static const String photoVerification = '/photo-verification';
 }
 
 // ─────────────── Route Names ───────────────
@@ -56,7 +54,6 @@ abstract final class RouteNames {
   static const String chatDetail = 'chatDetail';
   static const String profileView = 'profileView';
   static const String editProfile = 'editProfile';
-  static const String photoVerification = 'photoVerification';
 }
 
 bool _isAuthPath(String path) {
@@ -74,17 +71,8 @@ bool _requiresAuth(String path) {
       path == RoutePaths.settings ||
       path == RoutePaths.paywall ||
       path == RoutePaths.editProfile ||
-      path == RoutePaths.photoVerification ||
       path.startsWith('/chat/') ||
       path.startsWith('/profile/');
-}
-
-bool _requiresVerification(String path) {
-  return path == RoutePaths.home ||
-      path == RoutePaths.discovery ||
-      path == RoutePaths.matches ||
-      path == RoutePaths.chat ||
-      path.startsWith('/chat/');
 }
 
 // ─────────────── Router Provider ───────────────
@@ -106,9 +94,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final user = Supabase.instance.client.auth.currentUser;
 
       if (user == null) {
-        if (_requiresAuth(path)) {
-          return RoutePaths.login;
-        }
+        if (_requiresAuth(path)) return RoutePaths.login;
         return null;
       }
 
@@ -116,33 +102,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       try {
         profile = await Supabase.instance.client
             .from('user_profiles')
-            .select('id, is_verified')
+            .select('id')
             .eq('id', user.id)
             .maybeSingle();
       } catch (_) {}
 
       final hasProfile = profile != null;
-      final isVerified = profile?['is_verified'] == true;
 
       if (!hasProfile && path != RoutePaths.onboarding) {
         return RoutePaths.onboarding;
       }
 
-      if (hasProfile && path == RoutePaths.onboarding) {
-        return isVerified ? RoutePaths.home : RoutePaths.photoVerification;
-      }
-
-      if (_isAuthPath(path) || path == RoutePaths.ageGate) {
-        return isVerified ? RoutePaths.home : RoutePaths.photoVerification;
-      }
-
-      if (!isVerified &&
-          _requiresVerification(path) &&
-          path != RoutePaths.photoVerification) {
-        return RoutePaths.photoVerification;
-      }
-
-      if (isVerified && path == RoutePaths.photoVerification) {
+      if (hasProfile && (path == RoutePaths.onboarding || _isAuthPath(path) || path == RoutePaths.ageGate)) {
         return RoutePaths.home;
       }
 
@@ -231,11 +202,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.editProfile,
         name: RouteNames.editProfile,
         builder: (context, state) => const EditProfileScreen(),
-      ),
-      GoRoute(
-        path: RoutePaths.photoVerification,
-        name: RouteNames.photoVerification,
-        builder: (context, state) => const PhotoVerificationScreen(),
       ),
       GoRoute(
         path: '/profile/:id',
