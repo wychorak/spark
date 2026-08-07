@@ -1,17 +1,22 @@
-# spark
+# Spark — legacy Flutter prototype
 
-Spark Dating App
+> Status: archived and superseded by [spark-new](https://github.com/wychorak/spark-new).
 
-## Getting Started
+This repository contains the first Flutter implementation of Spark, a social discovery and dating-app concept. It is retained to document the product's earlier architecture and UI exploration.
 
-This project is a starting point for a Flutter application.
+## Implemented areas
 
-A few resources to get you started if this is your first Flutter project:
+- authentication and age-gating screens
+- profile onboarding and editing
+- discovery, matching and chat interfaces
+- safety and photo-verification flows
+- Supabase-oriented service architecture
+- premium/paywall UI
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Stack
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Flutter, Dart, Riverpod, GoRouter, Supabase and RevenueCat.
+
+## Current condition
+
+The project is not release-ready. The latest audit reports analyzer warnings and a stale widget test that references a removed `MyApp` class. Dependency constraints also lag behind current package releases. Active development moved to the React Native/Expo implementation in `spark-new`.
